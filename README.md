@@ -1,8 +1,6 @@
-# 🎙️ Voice AI Agents Platform
+# ConversaAI- Voice AI Agents Platform
 
-A production-ready platform for creating and managing AI-powered voice agents using Google Gemini and LangGraph. Build intelligent conversational agents for customer support, sales, appointments, and more.
-
-## 🏗️ Architecture
+A production-ready platform for creating and managing AI-powered voice agents. Build intelligent conversational agents for customer support, sales, appointments, and more.
 
 ## 🚀 Quick Start
 
@@ -310,31 +308,3 @@ This project is open source and available under the MIT License.
 - Set `ENVIRONMENT=test` in environment
 - Install test dependencies: `pip install pytest pytest-asyncio httpx`
 - Check that test database is accessible
-
-## 📞 Support
-
-For issues, questions, or contributions:
-- Open an issue on GitHub
-- Check the documentation at `http://localhost:8000/docs`
-- Review the API examples in `tests/`
-
-## 🎯 Roadmap
-
-- [ ] Voice input/output integration
-- [ ] Multi-language support
-- [ ] Advanced analytics dashboard
-- [ ] Custom tool creation UI
-- [ ] Webhook integrations
-- [ ] Rate limiting and authentication
-- [ ] Agent training interface
-- [ ] Conversation templates
-
-## 🌟 Credits
-
-Built with:
-- [Google Gemini](https://deepmind.google/technologies/gemini/)
-- [LangGraph](https://github.com/langchain-ai/langgraph)
-- [FastAPI](https://fastapi.tiangolo.com/)
-- [Next.js](https://nextjs.org/)
-
----
