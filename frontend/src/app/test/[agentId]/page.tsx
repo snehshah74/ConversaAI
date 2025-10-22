@@ -17,7 +17,8 @@ import {
   Activity
 } from 'lucide-react';
 import VoiceChat from '@/components/VoiceChat';
-import { getAgent, type Agent } from '@/lib/api';
+import { getAgent } from '@/lib/api';
+import type { Agent } from '@/lib/types';
 
 interface TestMetrics {
   conversationDuration: number;

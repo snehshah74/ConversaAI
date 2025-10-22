@@ -14,7 +14,8 @@ import {
   Bot,
   User
 } from 'lucide-react';
-import { startConversation, sendMessage, type Message, type Agent } from '@/lib/api';
+import { startConversation, sendMessage } from '@/lib/api';
+import type { Message, Agent } from '@/lib/types';
 
 interface VoiceChatProps {
   agentId: string;
@@ -26,9 +27,14 @@ interface VoiceChatProps {
   }) => void;
 }
 
-interface ChatMessage extends Message {
-  isFromUser: boolean;
+interface ChatMessage {
+  id: string;
+  conversation_id: string;
+  role: 'user' | 'agent';
+  content: string;
   timestamp: Date;
+  message_metadata?: Record<string, any>;
+  isFromUser: boolean;
 }
 
 const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }) => {

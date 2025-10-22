@@ -15,8 +15,8 @@ import {
   ArrowLeft,
   Sparkles
 } from 'lucide-react';
-import { createAgent, type AgentCreate } from '@/lib/api';
-import { INDUSTRIES, ROLES } from '@/lib/types';
+import { createAgent } from '@/lib/api';
+import { INDUSTRIES, ROLES, type AgentCreate } from '@/lib/types';
 
 interface FormData {
   name: string;
