@@ -2,32 +2,7 @@
 
 A production-ready platform for creating and managing AI-powered voice agents using Google Gemini and LangGraph. Build intelligent conversational agents for customer support, sales, appointments, and more.
 
-## ✨ Features
-
-- **🤖 Intelligent Voice Agents**: Create custom AI agents with specific personalities and knowledge bases
-- **🔧 Built-in Tools**: Order lookup, appointment scheduling, email sending, ticket creation, and human transfer
-- **💬 Conversational AI**: Powered by Google Gemini 2.0 Flash for natural, context-aware conversations
-- **🔄 LangGraph Workflows**: Robust agentic workflows with intent understanding, action planning, and execution
-- **📊 Database Integration**: PostgreSQL/SQLite support with conversation history and analytics
-- **🎨 Modern UI**: Next.js 15 frontend with React 19 and Tailwind CSS
-- **📈 Real-time Processing**: Track conversations, messages, and actions in real-time
-- **🧪 Comprehensive Testing**: Unit, integration, and end-to-end tests
-
 ## 🏗️ Architecture
-
-```
-voice-ai-agents/
-├── backend/              # FastAPI backend
-│   ├── agents/          # Voice agent implementations
-│   ├── routers/         # API endpoints
-│   ├── models/          # Database models and schemas
-│   ├── tools/           # Custom tools and executors
-│   └── tests/           # Test suite
-└── frontend/            # Next.js frontend
-    ├── src/app/         # Pages and layouts
-    ├── src/components/  # React components
-    └── src/lib/         # Utilities and API client
-```
 
 ## 🚀 Quick Start
 
@@ -363,6 +338,3 @@ Built with:
 - [Next.js](https://nextjs.org/)
 
 ---
-
-Made with ❤️ for building amazing voice AI experiences
-
