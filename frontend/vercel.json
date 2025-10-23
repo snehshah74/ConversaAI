@@ -4,9 +4,6 @@
   "devCommand": "npm run dev",
   "installCommand": "npm install",
   "framework": "nextjs",
-  "env": {
-    "NEXT_PUBLIC_API_URL": "@voice-ai-api-url"
-  },
   "regions": ["iad1"],
   "public": true
 }
