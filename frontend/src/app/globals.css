@@ -1,0 +1,135 @@
+@import "tailwindcss";
+
+:root {
+  --background: #000000;
+  --foreground: #ffffff;
+  --card-bg: #18181b;
+  --card-border: #27272a;
+  --text-primary: #ffffff;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --accent: #a855f7;
+  --accent-hover: #9333ea;
+  --font-inter: var(--font-inter);
+}
+
+/* Dark theme variables only */
+.dark {
+  --background: #000000;
+  --foreground: #ffffff;
+  --card-bg: #18181b;
+  --card-border: #27272a;
+  --text-primary: #ffffff;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --accent: #a855f7;
+  --accent-hover: #9333ea;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+}
+
+/* Theme-aware utility classes */
+.bg-theme {
+  background-color: var(--background);
+}
+
+.text-theme {
+  color: var(--foreground);
+}
+
+.text-theme-secondary {
+  color: var(--text-secondary);
+}
+
+.text-theme-muted {
+  color: var(--text-muted);
+}
+
+.bg-card {
+  background-color: var(--card-bg);
+}
+
+.border-card {
+  border-color: var(--card-border);
+}
+
+.text-accent {
+  color: var(--accent);
+}
+
+.hover\:text-accent:hover {
+  color: var(--accent-hover);
+}
+
+/* Custom scrollbar for dark theme only */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Glass morphism utilities */
+.glass {
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.glass-light {
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(148, 163, 184, 0.05);
+}
+
+/* Custom slider styles */
+.slider::-webkit-slider-thumb {
+  appearance: none;
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  cursor: pointer;
+  border: 2px solid #1e293b;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.slider::-webkit-slider-thumb:hover {
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  transform: scale(1.1);
+}
+
+.slider::-moz-range-thumb {
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  cursor: pointer;
+  border: 2px solid #1e293b;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.slider::-moz-range-thumb:hover {
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  transform: scale(1.1);
+}
