@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { 
   Bot, 
   Building2, 
@@ -13,10 +14,17 @@ import {
   Wrench, 
   Check,
   ArrowLeft,
-  Sparkles
+  Sparkles,
+  ArrowRight,
+  CheckCircle2,
+  Loader2
 } from 'lucide-react';
 import { createAgent } from '@/lib/api';
 import { INDUSTRIES, ROLES, type AgentCreate } from '@/lib/types';
+import { getTemplateById, type AgentTemplate } from '@/lib/templates';
+import VoiceSelector from '@/components/VoiceSelector';
+import KnowledgeUploader from '@/components/KnowledgeUploader';
+import PendingKnowledgeUploader, { type PendingKnowledgeItem } from '@/components/PendingKnowledgeUploader';
 
 interface FormData {
   name: string;
@@ -29,6 +37,8 @@ interface FormData {
   voice_settings: {
     speed: number;
     pitch: number;
+    voice?: string;
+    gender?: 'male' | 'female' | 'neutral';
   };
   available_tools: string[];
   is_active: boolean;
@@ -206,10 +216,121 @@ const availableTools = [
 ];
 
 export default function CreateAgent() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-theme text-theme flex items-center justify-center">
+      <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
+    </div>}>
+      <CreateAgentContent />
+    </Suspense>
+  );
+}
+
+function CreateAgentContent() {
   const router = useRouter();
-  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const templateId = searchParams.get('template');
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(templateId || null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [currentStep, setCurrentStep] = useState<'template' | 'customize' | 'review'>('template');
+  const [createdAgentId, setCreatedAgentId] = useState<string | null>(null);
+  const [pendingKnowledgeItems, setPendingKnowledgeItems] = useState<PendingKnowledgeItem[]>([]);
+  const [isUploadingPending, setIsUploadingPending] = useState(false);
+
+  // Upload pending knowledge items after agent is created
+  const uploadPendingItems = useCallback(async (agentId: string, items: PendingKnowledgeItem[]) => {
+    if (items.length === 0) return;
+    
+    setIsUploadingPending(true);
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    
+    try {
+      console.log(`📤 Uploading ${items.length} pending knowledge items to agent ${agentId}`);
+      
+      for (const item of items) {
+        try {
+          if (item.type === 'document' && item.file) {
+            console.log(`📄 Uploading document: ${item.file.name}`);
+            const formData = new FormData();
+            formData.append('file', item.file);
+            const response = await fetch(`${apiUrl}/api/agents/${agentId}/knowledge/upload`, {
+              method: 'POST',
+              body: formData
+            });
+            
+            if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(`Document upload failed: ${response.status} ${errorText}`);
+            }
+            console.log(`✅ Document uploaded: ${item.file.name}`);
+            
+          } else if (item.type === 'url' && item.url) {
+            console.log(`🌐 Scraping URL: ${item.url}`);
+            const formData = new FormData();
+            formData.append('url', item.url);
+            const response = await fetch(`${apiUrl}/api/agents/${agentId}/knowledge/url`, {
+              method: 'POST',
+              body: formData
+            });
+            
+            if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(`URL scrape failed: ${response.status} ${errorText}`);
+            }
+            console.log(`✅ URL scraped: ${item.url}`);
+            
+          } else if (item.type === 'faq' && item.question && item.answer) {
+            console.log(`❓ Adding FAQ: ${item.question.substring(0, 50)}...`);
+            const formData = new FormData();
+            formData.append('question', item.question);
+            formData.append('answer', item.answer);
+            const response = await fetch(`${apiUrl}/api/agents/${agentId}/knowledge/faq`, {
+              method: 'POST',
+              body: formData
+            });
+            
+            if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(`FAQ add failed: ${response.status} ${errorText}`);
+            }
+            console.log(`✅ FAQ added`);
+          }
+        } catch (itemError) {
+          console.error(`❌ Error uploading item ${item.id}:`, itemError);
+          // Continue with other items even if one fails
+        }
+      }
+      
+      // Clear pending items after successful upload
+      setPendingKnowledgeItems([]);
+      console.log(`✅ All pending knowledge items uploaded successfully`);
+      
+    } catch (error) {
+      console.error('❌ Error uploading pending knowledge items:', error);
+      // Don't clear items on error so user can retry
+    } finally {
+      setIsUploadingPending(false);
+    }
+  }, []);
+
+  // Scroll to knowledge uploader when agent is created
+  useEffect(() => {
+    if (createdAgentId) {
+      setTimeout(() => {
+        const uploaderElement = document.getElementById('knowledge-uploader');
+        if (uploaderElement) {
+          uploaderElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 300);
+    }
+  }, [createdAgentId]);
+
+  // Upload pending knowledge items after agent is created
+  useEffect(() => {
+    if (createdAgentId && pendingKnowledgeItems.length > 0 && !isUploadingPending) {
+      uploadPendingItems(createdAgentId, pendingKnowledgeItems);
+    }
+  }, [createdAgentId, pendingKnowledgeItems.length, isUploadingPending, uploadPendingItems]);
 
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -221,11 +342,24 @@ export default function CreateAgent() {
     greeting: '',
     voice_settings: {
       speed: 1.0,
-      pitch: 1.0
+      pitch: 1.0,
+      voice: 'default',
+      gender: 'female'
     },
     available_tools: [],
     is_active: true
   });
+
+  // Load template from URL if provided
+  useEffect(() => {
+    if (templateId) {
+      const template = getTemplateById(templateId);
+      if (template) {
+        handleTemplateSelectFromLibrary(template);
+        setCurrentStep('customize');
+      }
+    }
+  }, [templateId]);
 
   const handleTemplateSelect = (template: Template) => {
     setSelectedTemplate(template.id);
@@ -234,6 +368,27 @@ export default function CreateAgent() {
       ...template.data,
       name: prev.name || '',
       company: prev.company || ''
+    }));
+    setCurrentStep('customize');
+  };
+
+  const handleTemplateSelectFromLibrary = (template: AgentTemplate) => {
+    setSelectedTemplate(template.id);
+    setFormData(prev => ({
+      ...prev,
+      industry: template.industry,
+      role: template.category,
+      personality: template.personality,
+      knowledge_base: template.sampleKnowledgeBase,
+      greeting: template.greetingMessage,
+      available_tools: template.suggestedTools,
+      voice_settings: {
+        speed: template.voiceSettings.speed,
+        pitch: 1.0,
+        voice: 'default',
+        gender: template.voiceSettings.tone === 'professional' ? 'neutral' : 
+                template.voiceSettings.tone === 'welcoming' ? 'female' : 'neutral'
+      }
     }));
   };
 
@@ -289,7 +444,7 @@ export default function CreateAgent() {
       newErrors.personality = 'At least one personality trait is required';
     }
     if (!formData.knowledge_base.trim()) {
-      newErrors.knowledge_base = 'Knowledge base is required';
+      newErrors.knowledge_base = 'Agent instructions are required - describe how your AI agent should work';
     }
     if (!formData.greeting.trim()) {
       newErrors.greeting = 'Greeting message is required';
@@ -326,7 +481,9 @@ export default function CreateAgent() {
       };
 
       const newAgent = await createAgent(agentData);
-      router.push(`/agents/${newAgent.id}`);
+      setCreatedAgentId(newAgent.id);
+      // Don't redirect immediately - allow knowledge upload
+      // router.push(`/dashboard`);
     } catch (error) {
       console.error('Error creating agent:', error);
       setErrors({ submit: 'Failed to create agent. Please try again.' });
@@ -336,47 +493,56 @@ export default function CreateAgent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-600 to-slate-950">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="min-h-screen bg-theme text-theme">
+      <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8">
-          <button
-            onClick={() => router.back()}
-            className="flex items-center text-slate-300 hover:text-white mb-4 transition-colors"
+          <Link 
+            href="/dashboard"
+            className="inline-flex items-center space-x-2 text-zinc-400 hover:text-white mb-6 transition-colors"
           >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Dashboard
-          </button>
-          <h1 className="text-3xl font-bold text-white mb-2">Create New Agent</h1>
-          <p className="text-slate-300">Build an AI agent tailored to your business needs</p>
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back to Dashboard</span>
+          </Link>
+          <h1 className="text-4xl font-bold mb-2">Create New Agent</h1>
+          <p className="text-zinc-400">Build an AI agent tailored to your business needs</p>
         </div>
 
         {/* Templates Section */}
-        <div className="glass rounded-xl p-6 mb-8">
-          <div className="flex items-center mb-6">
-            <Sparkles className="w-5 h-5 text-yellow-400 mr-2" />
-            <h2 className="text-xl font-semibold text-white">Quick Start Templates</h2>
+        <div className="bg-zinc-900/50 rounded-2xl border border-zinc-800 p-6 mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center">
+              <Sparkles className="w-5 h-5 text-yellow-400 mr-2" />
+              <h2 className="text-xl font-semibold text-white">Quick Start Templates</h2>
+            </div>
+            <Link
+              href="/templates"
+              className="flex items-center text-purple-400 hover:text-purple-300 transition-colors text-sm"
+            >
+              Browse All Templates
+              <ArrowRight className="w-4 h-4 ml-1" />
+            </Link>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {templates.map((template) => (
               <button
                 key={template.id}
                 onClick={() => handleTemplateSelect(template)}
-                className={`p-4 rounded-lg border-2 transition-all duration-200 text-left ${
+                className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${
                   selectedTemplate === template.id
-                    ? 'border-blue-400 bg-blue-500/20'
-                    : 'border-slate-600 bg-slate-800/30 hover:border-slate-500 hover:bg-slate-800/50'
+                    ? 'border-purple-500 bg-purple-500/20'
+                    : 'border-zinc-700 bg-zinc-800/50 hover:border-zinc-600 hover:bg-zinc-800/70'
                 }`}
               >
                 <div className="flex items-center mb-2">
-                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center mr-3">
+                  <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center mr-3 text-white">
                     {template.icon}
                   </div>
                   <h3 className="font-semibold text-white">{template.name}</h3>
                 </div>
-                <p className="text-sm text-slate-300">{template.description}</p>
+                <p className="text-sm text-zinc-400">{template.description}</p>
                 {selectedTemplate === template.id && (
-                  <div className="flex items-center mt-2 text-blue-400">
+                  <div className="flex items-center mt-2 text-purple-400">
                     <Check className="w-4 h-4 mr-1" />
                     <span className="text-sm">Selected</span>
                   </div>
@@ -387,48 +553,48 @@ export default function CreateAgent() {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-8">
+        <form onSubmit={handleSubmit} className="space-y-6">
           {/* Basic Info */}
-          <div className="glass rounded-xl p-6">
+          <div className="bg-zinc-900/50 rounded-2xl border border-zinc-800 p-6">
             <div className="flex items-center mb-6">
-              <Bot className="w-5 h-5 text-blue-400 mr-2" />
+              <Bot className="w-5 h-5 text-purple-400 mr-2" />
               <h2 className="text-xl font-semibold text-white">Basic Information</h2>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
                   Agent Name *
                 </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => handleInputChange('name', e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 bg-zinc-800/50 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   placeholder="e.g., Customer Support Bot"
                 />
                 {errors.name && <p className="text-red-400 text-sm mt-1">{errors.name}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
                   Company *
                 </label>
                 <input
                   type="text"
                   value={formData.company}
                   onChange={(e) => handleInputChange('company', e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 bg-zinc-800/50 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   placeholder="e.g., Acme Corp"
                 />
                 {errors.company && <p className="text-red-400 text-sm mt-1">{errors.company}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
                   Industry *
                 </label>
                 <select
                   value={formData.industry}
                   onChange={(e) => handleInputChange('industry', e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 bg-zinc-800/50 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 >
                   <option value="">Select Industry</option>
                   {INDUSTRIES.map((industry) => (
@@ -438,13 +604,13 @@ export default function CreateAgent() {
                 {errors.industry && <p className="text-red-400 text-sm mt-1">{errors.industry}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
                   Role *
                 </label>
                 <select
                   value={formData.role}
                   onChange={(e) => handleInputChange('role', e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 bg-zinc-800/50 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 >
                   <option value="">Select Role</option>
                   {ROLES.map((role) => (
@@ -457,23 +623,23 @@ export default function CreateAgent() {
           </div>
 
           {/* Personality Traits */}
-          <div className="glass rounded-xl p-6">
+          <div className="bg-zinc-900/50 rounded-2xl border border-zinc-800 p-6">
             <div className="flex items-center mb-6">
-              <Heart className="w-5 h-5 text-pink-400 mr-2" />
+              <Bot className="w-5 h-5 text-blue-400 mr-2" />
               <h2 className="text-xl font-semibold text-white">Personality Traits</h2>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {personalityTraits.map((trait) => (
-                <label key={trait.id} className="flex items-start space-x-3 cursor-pointer">
+                <label key={trait.id} className="flex items-start space-x-3 p-4 bg-zinc-800/50 rounded-xl border border-zinc-700 hover:border-purple-500/50 cursor-pointer transition-colors">
                   <input
                     type="checkbox"
                     checked={formData.personality.includes(trait.id)}
                     onChange={(e) => handlePersonalityChange(trait.id, e.target.checked)}
-                    className="mt-1 w-4 h-4 text-blue-600 bg-slate-800 border-slate-600 rounded focus:ring-blue-500 focus:ring-2"
+                    className="mt-1 w-4 h-4 text-purple-600 bg-zinc-800 border-zinc-600 rounded focus:ring-purple-500 focus:ring-2"
                   />
                   <div>
                     <div className="text-sm font-medium text-white">{trait.label}</div>
-                    <div className="text-xs text-slate-400">{trait.description}</div>
+                    <div className="text-xs text-zinc-400">{trait.description}</div>
                   </div>
                 </label>
               ))}
@@ -481,36 +647,116 @@ export default function CreateAgent() {
             {errors.personality && <p className="text-red-400 text-sm mt-2">{errors.personality}</p>}
           </div>
 
-          {/* Knowledge Base */}
-          <div className="glass rounded-xl p-6">
+          {/* Agent Instructions - How AI Should Work */}
+          <div className="bg-zinc-900/50 rounded-2xl border border-zinc-800 p-6">
             <div className="flex items-center mb-6">
-              <Brain className="w-5 h-5 text-purple-400 mr-2" />
-              <h2 className="text-xl font-semibold text-white">Knowledge Base</h2>
+              <MessageSquare className="w-5 h-5 text-cyan-400 mr-2" />
+              <h2 className="text-xl font-semibold text-white">Agent Instructions</h2>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Agent Instructions and Knowledge *
+              <label className="block text-sm font-medium text-zinc-300 mb-2">
+                How should your AI agent work? *
               </label>
+              <p className="text-xs text-zinc-400 mb-3">
+                Describe the agent's behavior, tone, response style, and any specific instructions for how it should interact with users.
+              </p>
               <textarea
                 value={formData.knowledge_base}
                 onChange={(e) => handleInputChange('knowledge_base', e.target.value)}
                 rows={8}
-                className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                placeholder="Describe what your agent should know and how it should behave. Include specific instructions, company policies, product information, and any other relevant knowledge..."
+                className="w-full px-4 py-3 bg-zinc-800/50 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                placeholder="Example: You are a friendly customer support agent. Always greet customers warmly, listen carefully to their concerns, and provide clear, helpful solutions. If you cannot resolve an issue, politely offer to transfer to a human agent..."
+                required
               />
               {errors.knowledge_base && <p className="text-red-400 text-sm mt-1">{errors.knowledge_base}</p>}
             </div>
           </div>
 
+          {/* Knowledge Base Upload - Documents, URLs, FAQs */}
+          <div id="knowledge-uploader" className="bg-zinc-900/50 rounded-2xl border border-zinc-800 p-6">
+            <div className="flex items-center mb-6">
+              <Brain className="w-5 h-5 text-green-400 mr-2" />
+              <h2 className="text-xl font-semibold text-white">Knowledge Base</h2>
+            </div>
+            <p className="text-zinc-400 mb-4">
+              Upload documents, scrape websites, or add FAQs to train your agent with additional knowledge.
+            </p>
+            
+            {createdAgentId ? (
+              <>
+                {isUploadingPending && pendingKnowledgeItems.length > 0 && (
+                  <div className="bg-blue-500/20 border border-blue-500 rounded-lg p-4 mb-4">
+                    <p className="text-blue-300 text-sm flex items-center">
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Uploading {pendingKnowledgeItems.length} pending knowledge source(s)...
+                    </p>
+                  </div>
+                )}
+                {!isUploadingPending && pendingKnowledgeItems.length === 0 && (
+                  <div className="bg-green-500/20 border border-green-500 rounded-lg p-4 mb-4 animate-fade-in">
+                    <p className="text-green-300 text-sm flex items-center">
+                      <CheckCircle2 className="w-5 h-5 mr-2" />
+                      Agent created! {pendingKnowledgeItems.length > 0 ? 'Uploading knowledge sources...' : 'You can add more knowledge sources below.'}
+                    </p>
+                  </div>
+                )}
+                <KnowledgeUploader
+                  agentId={createdAgentId}
+                  onUploadComplete={() => {
+                    // Optionally show success message
+                  }}
+                />
+              </>
+            ) : (
+              <PendingKnowledgeUploader
+                pendingItems={pendingKnowledgeItems}
+                onAddItem={(item) => setPendingKnowledgeItems(prev => [...prev, item])}
+                onRemoveItem={(id) => setPendingKnowledgeItems(prev => prev.filter(item => item.id !== id))}
+              />
+            )}
+          </div>
+
           {/* Voice Settings */}
-          <div className="glass rounded-xl p-6">
+          <div className="bg-zinc-900/50 rounded-2xl border border-zinc-800 p-6">
             <div className="flex items-center mb-6">
               <Volume2 className="w-5 h-5 text-green-400 mr-2" />
               <h2 className="text-xl font-semibold text-white">Voice Settings</h2>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Voice Selection */}
+            <div className="mb-6">
+              <VoiceSelector
+                selectedVoice={formData.voice_settings.voice || 'default'}
+                onVoiceChange={(voiceId) => {
+                  // Extract gender from selected voice
+                  const voices = speechSynthesis.getVoices();
+                  const selectedVoiceObj = voices.find(v => v.name === voiceId);
+                  let gender: 'male' | 'female' | 'neutral' = 'neutral';
+                  
+                  if (voiceId !== 'default' && selectedVoiceObj) {
+                    const name = selectedVoiceObj.name.toLowerCase();
+                    if (name.includes('samantha') || name.includes('karen') || name.includes('victoria') || name.includes('female')) {
+                      gender = 'female';
+                    } else if (name.includes('daniel') || name.includes('david') || name.includes('alex') || name.includes('male')) {
+                      gender = 'male';
+                    }
+                  }
+                  
+                  handleInputChange('voice_settings', {
+                    ...formData.voice_settings,
+                    voice: voiceId,
+                    gender: gender
+                  });
+                }}
+                speechRate={formData.voice_settings.speed}
+                speechPitch={formData.voice_settings.pitch}
+              />
+            </div>
+            
+            {/* Speed and Pitch Controls */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6 pt-6 border-t border-zinc-700">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
                   Speech Speed: {formData.voice_settings.speed}x
                 </label>
                 <input
@@ -523,15 +769,15 @@ export default function CreateAgent() {
                     ...formData.voice_settings,
                     speed: parseFloat(e.target.value)
                   })}
-                  className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer slider"
+                  className="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer slider"
                 />
-                <div className="flex justify-between text-xs text-slate-400 mt-1">
+                <div className="flex justify-between text-xs text-zinc-400 mt-1">
                   <span>Slow</span>
                   <span>Fast</span>
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
                   Voice Pitch: {formData.voice_settings.pitch}x
                 </label>
                 <input
@@ -544,9 +790,9 @@ export default function CreateAgent() {
                     ...formData.voice_settings,
                     pitch: parseFloat(e.target.value)
                   })}
-                  className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer slider"
+                  className="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer slider"
                 />
-                <div className="flex justify-between text-xs text-slate-400 mt-1">
+                <div className="flex justify-between text-xs text-zinc-400 mt-1">
                   <span>Low</span>
                   <span>High</span>
                 </div>
@@ -555,20 +801,20 @@ export default function CreateAgent() {
           </div>
 
           {/* Greeting Message */}
-          <div className="glass rounded-xl p-6">
+          <div className="bg-zinc-900/50 rounded-2xl border border-zinc-800 p-6">
             <div className="flex items-center mb-6">
               <MessageSquare className="w-5 h-5 text-blue-400 mr-2" />
               <h2 className="text-xl font-semibold text-white">Greeting Message</h2>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
+              <label className="block text-sm font-medium text-zinc-300 mb-2">
                 First Message to Customers *
               </label>
               <textarea
                 value={formData.greeting}
                 onChange={(e) => handleInputChange('greeting', e.target.value)}
                 rows={3}
-                className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                className="w-full px-4 py-3 bg-zinc-800/50 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
                 placeholder="What should your agent say when a customer first starts a conversation?"
               />
               {errors.greeting && <p className="text-red-400 text-sm mt-1">{errors.greeting}</p>}
@@ -576,7 +822,7 @@ export default function CreateAgent() {
           </div>
 
           {/* Available Tools */}
-          <div className="glass rounded-xl p-6">
+          <div className="bg-zinc-900/50 rounded-2xl border border-zinc-800 p-6">
             <div className="flex items-center mb-6">
               <Wrench className="w-5 h-5 text-orange-400 mr-2" />
               <h2 className="text-xl font-semibold text-white">Available Tools</h2>
@@ -588,11 +834,11 @@ export default function CreateAgent() {
                     type="checkbox"
                     checked={formData.available_tools.includes(tool.id)}
                     onChange={(e) => handleToolChange(tool.id, e.target.checked)}
-                    className="mt-1 w-4 h-4 text-blue-600 bg-slate-800 border-slate-600 rounded focus:ring-blue-500 focus:ring-2"
+                    className="mt-1 w-4 h-4 text-purple-600 bg-zinc-800 border-zinc-600 rounded focus:ring-purple-500 focus:ring-2"
                   />
                   <div>
                     <div className="text-sm font-medium text-white">{tool.label}</div>
-                    <div className="text-xs text-slate-400">{tool.description}</div>
+                    <div className="text-xs text-zinc-400">{tool.description}</div>
                   </div>
                 </label>
               ))}
@@ -600,33 +846,68 @@ export default function CreateAgent() {
             {errors.available_tools && <p className="text-red-400 text-sm mt-2">{errors.available_tools}</p>}
           </div>
 
+          {/* Knowledge Base Info - Show before agent creation */}
+          {!createdAgentId && (
+            <div className="bg-zinc-900/50 rounded-2xl border border-zinc-800 p-6">
+              <div className="flex items-center mb-6">
+                <Brain className="w-5 h-5 text-green-400 mr-2" />
+                <h2 className="text-xl font-semibold text-white">Knowledge Base</h2>
+              </div>
+              <p className="text-zinc-400 mb-4">
+                After creating your agent, you'll be able to upload documents, scrape websites, and add FAQs to train it with knowledge.
+              </p>
+              <div className="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700">
+                <p className="text-sm text-zinc-300">
+                  <strong className="text-purple-400">Tip:</strong> You can add knowledge sources after creating the agent from the agent edit page.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Submit Button */}
-          <div className="flex justify-end space-x-4">
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="px-6 py-3 border border-slate-600 text-slate-300 font-medium rounded-lg hover:bg-slate-800/50 transition-all duration-200"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-medium rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Bot className="w-4 h-4 mr-2" />
-                  Create Agent
-                </>
-              )}
-            </button>
-          </div>
+          {!createdAgentId ? (
+            <div className="flex justify-end space-x-4">
+              <Link
+                href="/dashboard"
+                className="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl transition-colors font-medium"
+              >
+                Cancel
+              </Link>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="px-8 py-3 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-medium rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center shadow-lg shadow-purple-500/25"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Bot className="w-5 h-5 mr-2" />
+                    Create Agent
+                  </>
+                )}
+              </button>
+            </div>
+          ) : (
+            <div className="flex justify-end space-x-4">
+              <Link
+                href="/dashboard"
+                className="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl transition-colors font-medium"
+              >
+                Skip for Now
+              </Link>
+              <Link
+                href="/dashboard"
+                className="px-8 py-3 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-medium rounded-xl transition-all duration-200 flex items-center shadow-lg shadow-purple-500/25"
+              >
+                <CheckCircle2 className="w-5 h-5 mr-2" />
+                Finish & Go to Dashboard
+              </Link>
+            </div>
+          )}
 
           {errors.submit && (
             <div className="text-center">

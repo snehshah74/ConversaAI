@@ -30,29 +30,68 @@ export interface Conversation {
 
 // Agent API functions
 export async function createAgent(agentData: Partial<Agent>): Promise<Agent> {
-  const response = await fetch(`${API_URL}/api/agents`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(agentData),
-  });
-  
-  if (!response.ok) {
-    throw new Error('Failed to create agent');
+  try {
+    const response = await fetch(`${API_URL}/api/agents`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(agentData),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Failed to create agent: ${response.status} ${response.statusText}`);
+    }
+    
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error(`Cannot connect to backend API at ${API_URL}. Make sure the backend server is running.`);
+    }
+    throw error;
   }
-  
-  return response.json();
 }
 
 export async function getAgents(): Promise<Agent[]> {
-  const response = await fetch(`${API_URL}/api/agents`);
-  
-  if (!response.ok) {
-    throw new Error('Failed to fetch agents');
+  try {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    console.log('🔄 Fetching agents from:', `${apiUrl}/api/agents`);
+    
+    const response = await fetch(`${apiUrl}/api/agents`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      // Add mode and credentials for CORS
+      mode: 'cors',
+      credentials: 'omit',
+    });
+    
+    console.log('📡 Response status:', response.status, response.statusText);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API Error:', errorText);
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = { detail: errorText || `Failed to fetch agents: ${response.status} ${response.statusText}` };
+      }
+      throw new Error(errorData.detail || `Failed to fetch agents: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log('✅ Agents received:', data);
+    return data;
+  } catch (error) {
+    console.error('❌ Fetch error:', error);
+    if (error instanceof TypeError && (error.message.includes('fetch') || error.message.includes('Load failed'))) {
+      throw new Error(`Cannot connect to backend API. Make sure the backend server is running at ${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}`);
+    }
+    throw error;
   }
-  
-  return response.json();
 }
 
 export async function getAgent(id: string): Promise<Agent> {
@@ -82,12 +121,14 @@ export async function updateAgent(id: string, agentData: Partial<Agent>): Promis
 }
 
 export async function deleteAgent(id: string): Promise<void> {
-  const response = await fetch(`${API_URL}/api/agents/${id}`, {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const response = await fetch(`${apiUrl}/api/agents/${id}`, {
     method: 'DELETE',
   });
   
   if (!response.ok) {
-    throw new Error('Failed to delete agent');
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Failed to delete agent: ${response.status} ${response.statusText}`);
   }
 }
 
@@ -117,6 +158,8 @@ export async function deactivateAgent(id: string): Promise<Agent> {
 
 // Chat API functions
 export async function sendMessage(agentId: string, message: string, conversationId?: string) {
+  console.log('🔄 API sendMessage:', { agentId, message, conversationId, url: `${API_URL}/api/chat` });
+  
   const response = await fetch(`${API_URL}/api/chat`, {
     method: 'POST',
     headers: {
@@ -130,10 +173,14 @@ export async function sendMessage(agentId: string, message: string, conversation
   });
   
   if (!response.ok) {
-    throw new Error('Failed to send message');
+    const errorText = await response.text();
+    console.error('❌ API error:', { status: response.status, statusText: response.statusText, body: errorText });
+    throw new Error(`Failed to send message: ${response.status} ${errorText}`);
   }
   
-  return response.json();
+  const data = await response.json();
+  console.log('✅ API response:', data);
+  return data;
 }
 
 export async function startConversation(agentId: string): Promise<Conversation> {

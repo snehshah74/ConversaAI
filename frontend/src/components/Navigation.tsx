@@ -18,8 +18,10 @@ const Navigation = () => {
 
   const authenticatedNavItems = [
     { name: "Dashboard", href: "/dashboard" },
-    { name: "Agents", href: "/agents" },
-    { name: "Analytics", href: "/analytics" },
+    { name: "Templates", href: "/templates" },
+    { name: "Create Agent", href: "/agents/create" },
+    { name: "Deployments", href: "/deployments" },
+    { name: "Voice Settings", href: "/settings/voice" },
   ];
 
   const isActive = (href: string) => {

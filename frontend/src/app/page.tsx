@@ -291,7 +291,7 @@ export default function LandingPage() {
                 <li><a href="#features" className="hover:text-white transition-colors">Features</a></li>
                 <li><a href="#technology" className="hover:text-white transition-colors">Technology</a></li>
                 <li><Link href="/dashboard" className="hover:text-white transition-colors">Dashboard</Link></li>
-                <li><a href="/docs" className="hover:text-white transition-colors">API Docs</a></li>
+                <li><a href="http://127.0.0.1:8000/docs" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">API Docs</a></li>
               </ul>
                   </div>
             

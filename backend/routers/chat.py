@@ -18,6 +18,7 @@ from models.schemas import (
     ConversationWithMessages, MessageSchema, ActionSchema, ErrorResponse
 )
 from agents.voice_agent import create_voice_agent, VoiceAgentResponse
+from services.conversation_learning import ConversationLearningService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -78,6 +79,7 @@ async def chat_with_agent(
         
         # Initialize VoiceAgent with agent configuration
         agent_config = {
+            "id": str(agent_db.id),  # CRITICAL: Add agent ID for knowledge base search
             "name": agent_db.name,
             "company": agent_db.company,
             "role": agent_db.role,
@@ -87,10 +89,83 @@ async def chat_with_agent(
             "voice_settings": agent_db.voice_settings
         }
         
+        logger.info(f"Initializing VoiceAgent with agent_id: {agent_config['id']}")
+        
+        # DEBUG: Check knowledge base for this agent
+        knowledge_sources_count = 0
+        try:
+            from services.knowledge_base import KnowledgeBaseService
+            import time
+            
+            kb_service = KnowledgeBaseService(str(agent_db.id))
+            kb_items = kb_service.get_all_knowledge(limit=10)
+            logger.info(f"🔍 DEBUG: Found {len(kb_items)} knowledge items for agent {agent_config['id']}")
+            if kb_items:
+                logger.info(f"🔍 DEBUG: KB sources: {[item.get('source', 'Unknown') for item in kb_items[:5]]}")
+            else:
+                logger.warning(f"⚠️ DEBUG: No knowledge items found for agent {agent_config['id']}")
+                logger.warning(f"⚠️ DEBUG: This means uploaded documents are not associated with this agent_id")
+            
+            # STEP 1: Search knowledge base for relevant information BEFORE processing message
+            logger.info(f"🔍 Searching knowledge base for query: '{chat_request.message[:100]}'")
+            search_start = time.time()
+            relevant_knowledge = kb_service.search(
+                query=chat_request.message,
+                top_k=5,  # Get top 5 most relevant chunks
+                similarity_threshold=0.3  # Lower threshold to get more results
+            )
+            search_elapsed = time.time() - search_start
+            knowledge_sources_count = len(relevant_knowledge)
+            
+            logger.info(f"📚 Knowledge search completed in {search_elapsed:.3f}s, found {knowledge_sources_count} relevant chunks")
+            
+            if relevant_knowledge:
+                for i, kb_item in enumerate(relevant_knowledge[:3], 1):
+                    logger.info(f"  [{i}] Source: {kb_item.get('source', 'Unknown')[:50]}, Similarity: {kb_item.get('similarity', 0):.2%}")
+                    logger.debug(f"      Content preview: {kb_item.get('content', '')[:100]}...")
+                
+                # Build knowledge context string
+                knowledge_context = "\n\n=== RELEVANT INFORMATION FROM KNOWLEDGE BASE ===\n"
+                for i, item in enumerate(relevant_knowledge, 1):
+                    source = item.get('source', 'Unknown')
+                    content = item.get('content', '')
+                    similarity = item.get('similarity', 0)
+                    knowledge_context += f"\n[Knowledge Source {i} from {source} (relevance: {similarity:.1%})]:\n{content}\n"
+                knowledge_context += "\n=== END OF KNOWLEDGE BASE ===\n\n"
+                
+                # Add knowledge context to agent config so it's used in response generation
+                agent_config['knowledge_context'] = knowledge_context
+                logger.info(f"✅ Added {len(relevant_knowledge)} knowledge chunks to agent context")
+            else:
+                logger.warning(f"⚠️ No relevant knowledge found for query: '{chat_request.message[:50]}'")
+                agent_config['knowledge_context'] = ""
+                
+        except Exception as kb_error:
+            logger.error(f"❌ Error searching knowledge base: {kb_error}", exc_info=True)
+            agent_config['knowledge_context'] = ""
+            knowledge_sources_count = 0
+        
         voice_agent = create_voice_agent(agent_config)
         
         # Get conversation history for context
         conversation_history = await _get_conversation_history(db, conversation.id)
+        
+        # Get similar past conversations for learning context (optional enhancement)
+        learning_service = ConversationLearningService(db)
+        similar_conversations = learning_service.get_similar_past_conversations(
+            str(chat_request.agent_id),
+            chat_request.message,
+            limit=3
+        )
+        
+        # Add similar conversation context to knowledge if available
+        if similar_conversations:
+            context_note = "\n\nSimilar past conversations for reference:\n"
+            for similar in similar_conversations[:2]:  # Use top 2 similar
+                context_note += f"User: {similar['user_message']}\n"
+                context_note += f"Agent: {similar['agent_response']}\n\n"
+            # Note: This could be added to agent config or passed as additional context
+            logger.info(f"Found {len(similar_conversations)} similar past conversations")
         
         # Process message through VoiceAgent
         logger.info("Processing message through VoiceAgent...")
@@ -129,7 +204,9 @@ async def chat_with_agent(
                 "actions_taken": agent_response.actions_taken,
                 "next_step": agent_response.next_step,
                 "entities": agent_response.entities,
-                "confidence": agent_response.confidence
+                "confidence": agent_response.confidence,
+                "knowledge_used": knowledge_sources_count > 0,
+                "knowledge_sources_count": knowledge_sources_count
             }
         )
         
@@ -344,9 +421,17 @@ async def _get_conversation_history(db: Session, conversation_id: UUID) -> List[
         Message.conversation_id == conversation_id
     ).order_by(Message.timestamp).limit(10).all()  # Last 10 messages for context
     
+    # Map database roles to LangChain message types
+    role_mapping = {
+        "user": "user",
+        "agent": "assistant",  # LangChain uses 'assistant' not 'agent'
+        "assistant": "assistant",
+        "system": "system"
+    }
+    
     return [
         {
-            "role": msg.role,
+            "role": role_mapping.get(msg.role, "user"),  # Default to 'user' if unknown
             "content": msg.content,
             "timestamp": msg.timestamp.isoformat()
         }

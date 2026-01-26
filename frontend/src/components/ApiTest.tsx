@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from 'react';
-import { getHealthStatus, getApiHealth, checkApiConnection } from '@/lib/api';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 export default function ApiTest() {
   const [status, setStatus] = useState<string>('');
@@ -12,42 +13,15 @@ export default function ApiTest() {
     setStatus('Testing API connection...');
     
     try {
-      const isConnected = await checkApiConnection();
-      if (isConnected) {
-        setStatus('✅ API connection successful!');
+      const response = await fetch(`${API_URL}/health`);
+      if (response.ok) {
+        const data = await response.json();
+        setStatus(`✅ API connected! Status: ${data.status}`);
       } else {
         setStatus('❌ API connection failed');
       }
     } catch (error) {
       setStatus(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const testHealthEndpoint = async () => {
-    setLoading(true);
-    setStatus('Testing health endpoint...');
-    
-    try {
-      const health = await getHealthStatus();
-      setStatus(`✅ Health: ${health.status} - ${health.service} v${health.version}`);
-    } catch (error) {
-      setStatus(`❌ Health Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const testApiHealth = async () => {
-    setLoading(true);
-    setStatus('Testing API health...');
-    
-    try {
-      const apiHealth = await getApiHealth();
-      setStatus(`✅ API Health: ${apiHealth.status} - Database: ${apiHealth.database}`);
-    } catch (error) {
-      setStatus(`❌ API Health Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -65,22 +39,6 @@ export default function ApiTest() {
         >
           {loading ? 'Testing...' : 'Test Connection'}
         </button>
-        
-        <button
-          onClick={testHealthEndpoint}
-          disabled={loading}
-          className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {loading ? 'Testing...' : 'Test Health'}
-        </button>
-        
-        <button
-          onClick={testApiHealth}
-          disabled={loading}
-          className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {loading ? 'Testing...' : 'Test API Health'}
-        </button>
       </div>
       
       {status && (
@@ -91,4 +49,3 @@ export default function ApiTest() {
     </div>
   );
 }
-

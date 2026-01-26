@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { 
   Bot, 
   Plus, 
@@ -13,10 +14,15 @@ import {
   BarChart3,
   Settings,
   LogOut,
-  Search
+  Search,
+  Globe,
+  Rocket,
+  Zap,
+  Trash2
 } from 'lucide-react';
-import { getAgents } from '@/lib/api';
+import { getAgents, deleteAgent } from '@/lib/api';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Agent {
   id: string;
@@ -34,9 +40,13 @@ interface Agent {
 }
 
 export default function DashboardPage() {
+  const { logout } = useAuth();
+  const router = useRouter();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [deletingAgentId, setDeletingAgentId] = useState<string | null>(null);
 
   useEffect(() => {
     loadAgents();
@@ -44,12 +54,43 @@ export default function DashboardPage() {
 
   const loadAgents = async () => {
     try {
+      setError(null);
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      console.log('🔄 Loading agents from:', apiUrl);
       const data = await getAgents();
-      setAgents(data);
-    } catch (error) {
-      console.error('Failed to load agents:', error);
+      console.log('✅ Agents loaded:', data);
+      setAgents(data || []);
+    } catch (error: any) {
+      console.error('❌ Failed to load agents:', error);
+      const errorMessage = error?.message || 'Failed to load agents';
+      setError(errorMessage);
+      
+      // If it's a connection error, show helpful message
+      if (errorMessage.includes('Cannot connect to backend') || errorMessage.includes('fetch') || errorMessage.includes('Load failed')) {
+        setError('Backend server is not running or not accessible. Please ensure the backend is running at http://localhost:8000');
+      }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteAgent = async (agentId: string, agentName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    if (!confirm(`Are you sure you want to delete "${agentName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setDeletingAgentId(agentId);
+      await deleteAgent(agentId);
+      // Remove agent from list
+      setAgents(prev => prev.filter(a => a.id !== agentId));
+    } catch (error: any) {
+      console.error('Failed to delete agent:', error);
+      alert(`Failed to delete agent: ${error.message || 'Unknown error'}`);
+    } finally {
+      setDeletingAgentId(null);
     }
   };
 
@@ -88,25 +129,11 @@ export default function DashboardPage() {
               <span className="font-medium">Create Voice AI Agent</span>
             </Link>
             <Link 
-              href="/analytics" 
+              href="/deployments" 
               className="flex items-center space-x-3 px-4 py-3 hover:bg-white/5 rounded-xl text-zinc-400 hover:text-white transition-colors"
             >
-              <BarChart3 className="w-5 h-5" />
-              <span className="font-medium">Analytics</span>
-            </Link>
-            <Link 
-              href="/conversations" 
-              className="flex items-center space-x-3 px-4 py-3 hover:bg-white/5 rounded-xl text-zinc-400 hover:text-white transition-colors"
-            >
-              <MessageCircle className="w-5 h-5" />
-              <span className="font-medium">Conversations</span>
-            </Link>
-            <Link 
-              href="/settings" 
-              className="flex items-center space-x-3 px-4 py-3 hover:bg-white/5 rounded-xl text-zinc-400 hover:text-white transition-colors"
-            >
-              <Settings className="w-5 h-5" />
-              <span className="font-medium">Settings</span>
+              <Globe className="w-5 h-5" />
+              <span className="font-medium">Deployments</span>
             </Link>
           </nav>
         </div>
@@ -119,7 +146,15 @@ export default function DashboardPage() {
               <div className="text-xs text-zinc-500">john@company.com</div>
             </div>
           </div>
-          <button className="flex items-center space-x-2 text-sm text-zinc-400 hover:text-white transition-colors">
+          <button 
+            onClick={() => {
+              logout();
+              if (typeof window !== 'undefined') {
+                window.location.href = '/';
+              }
+            }}
+            className="flex items-center space-x-2 text-sm text-zinc-400 hover:text-white transition-colors"
+          >
             <LogOut className="w-4 h-4" />
             <span>Sign Out</span>
           </button>
@@ -206,27 +241,52 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {loading ? (
+          {error ? (
+            <div className="text-center py-20 bg-red-950/20 border border-red-800/50 rounded-2xl">
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-red-900/50 rounded-2xl mb-6">
+                <Activity className="w-10 h-10 text-red-400" />
+              </div>
+              <h3 className="text-2xl font-bold mb-3 text-red-300">Failed to Load Agents</h3>
+              <p className="text-red-400 mb-6 max-w-md mx-auto">{error}</p>
+              <button
+                onClick={loadAgents}
+                className="inline-flex items-center space-x-2 px-6 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl transition-colors font-medium"
+              >
+                <Activity className="w-5 h-5" />
+                <span>Retry</span>
+              </button>
+            </div>
+          ) : loading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="p-6 bg-zinc-900/50 rounded-2xl border border-zinc-800 animate-pulse">
-                  <div className="h-6 bg-zinc-800 rounded mb-4"></div>
+                  <div className="flex items-center space-x-3 mb-4">
+                    <div className="w-12 h-12 bg-zinc-800 rounded-xl"></div>
+                    <div className="flex-1">
+                      <div className="h-5 bg-zinc-800 rounded mb-2"></div>
+                      <div className="h-3 bg-zinc-800 rounded w-1/2"></div>
+                    </div>
+                  </div>
                   <div className="h-4 bg-zinc-800 rounded mb-2"></div>
                   <div className="h-4 bg-zinc-800 rounded w-2/3"></div>
                 </div>
               ))}
             </div>
           ) : filteredAgents.length === 0 ? (
-            <div className="text-center py-12 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-              <Bot className="w-16 h-16 text-zinc-700 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">No Voice AI agents found</h3>
-              <p className="text-zinc-500 mb-6">
-                {searchQuery ? 'Try a different search term' : 'Create your first Voice AI agent to get started'}
+            <div className="text-center py-20 bg-gradient-to-br from-zinc-900/50 to-zinc-900/30 rounded-2xl border border-zinc-800">
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-2xl mb-6">
+                <Bot className="w-10 h-10 text-purple-400" />
+              </div>
+              <h3 className="text-2xl font-bold mb-3">No Voice AI agents yet</h3>
+              <p className="text-zinc-400 mb-8 max-w-md mx-auto">
+                {searchQuery 
+                  ? "No agents match your search. Try different keywords or create a new agent."
+                  : "Create your first Voice AI agent to start building intelligent voice interactions. It only takes a few minutes!"}
               </p>
               {!searchQuery && (
                 <Link 
                   href="/agents/create"
-                  className="inline-flex items-center space-x-2 px-6 py-3 bg-white text-black rounded-xl hover:bg-zinc-200 transition-colors font-medium"
+                  className="inline-flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-xl hover:from-purple-600 hover:to-blue-600 transition-all font-medium shadow-lg shadow-purple-500/25"
                 >
                   <Plus className="w-5 h-5" />
                   <span>Create Your First Voice AI Agent</span>
@@ -236,28 +296,51 @@ export default function DashboardPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredAgents.map((agent) => (
-                <div 
-                  key={agent.id} 
-                  className="group p-6 bg-zinc-900/50 rounded-2xl border border-zinc-800 hover:border-zinc-700 transition-all"
+                <div
+                  key={agent.id}
+                  className="group p-6 bg-gradient-to-br from-zinc-900/50 to-zinc-900/30 rounded-2xl border border-zinc-800 hover:border-purple-500/50 transition-all duration-300 hover:shadow-xl hover:shadow-purple-500/10 hover:-translate-y-1"
                 >
                   <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <div
+                      onClick={() => router.push(`/agents/${agent.id}/edit`)}
+                      className="flex items-center space-x-3 flex-1 cursor-pointer group/edit"
+                    >
+                      <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-purple-500/25">
                         <Bot className="w-6 h-6 text-white" />
                       </div>
-                      <div>
-                        <h3 className="font-semibold text-lg">{agent.name}</h3>
-                        <div className="flex items-center space-x-2 text-xs text-zinc-500">
-                          <div className={`w-2 h-2 rounded-full ${agent.is_active ? 'bg-green-400' : 'bg-zinc-600'}`}></div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-lg group-hover/edit:text-purple-400 transition-colors">{agent.name}</h3>
+                        <div className="flex items-center space-x-2 text-xs text-zinc-500 mt-1">
+                          <div className={`w-2 h-2 rounded-full ${agent.is_active ? 'bg-green-400 animate-pulse' : 'bg-zinc-600'}`}></div>
                           <span>{agent.is_active ? 'Active' : 'Inactive'}</span>
                         </div>
                       </div>
                     </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteAgent(agent.id, agent.name, e);
+                      }}
+                      disabled={deletingAgentId === agent.id}
+                      className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                      title="Delete Agent"
+                    >
+                      {deletingAgentId === agent.id ? (
+                        <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </button>
                   </div>
 
-                  <p className="text-sm text-zinc-400 mb-4 line-clamp-2">
-                    {agent.personality}
-                  </p>
+                  <div 
+                    onClick={() => router.push(`/agents/${agent.id}/edit`)}
+                    className="cursor-pointer"
+                  >
+                    <p className="text-sm text-zinc-400 mb-4 line-clamp-2 min-h-[2.5rem]">
+                      {agent.personality}
+                    </p>
+                  </div>
 
                   <div className="flex items-center justify-between pt-4 border-t border-zinc-800">
                     <div className="flex items-center space-x-4 text-xs text-zinc-500">
@@ -271,20 +354,28 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <Link
-                        href={`/test/${agent.id}`}
-                        className="p-2 hover:bg-zinc-800 rounded-lg transition-colors"
-                        title="Test agent"
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push(`/agents/${agent.id}/deploy`);
+                        }}
+                        className="flex items-center space-x-1 px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 rounded-lg transition-all text-xs hover:scale-105"
+                        title="Deploy"
                       >
-                        <Activity className="w-4 h-4 text-zinc-400" />
-                      </Link>
-                      <Link
-                        href={`/agents/${agent.id}/edit`}
-                        className="p-2 hover:bg-zinc-800 rounded-lg transition-colors"
-                        title="Edit agent"
+                        <Rocket className="w-3 h-3" />
+                        <span>Deploy</span>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push(`/test/${agent.id}`);
+                        }}
+                        className="flex items-center space-x-1 px-3 py-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-all text-xs"
+                        title="Test"
                       >
-                        <Settings className="w-4 h-4 text-zinc-400" />
-                      </Link>
+                        <Activity className="w-4 h-4" />
+                        <span>Test</span>
+                      </button>
                     </div>
                   </div>
                 </div>

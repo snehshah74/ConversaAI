@@ -22,6 +22,16 @@ export default function SignUpPage() {
     e.preventDefault();
     setError('');
 
+    if (!formData.name || !formData.email || !formData.password) {
+      setError('Please fill in all required fields');
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      setError('Password must be at least 6 characters long');
+      return;
+    }
+
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
       return;
@@ -34,8 +44,10 @@ export default function SignUpPage() {
         company: formData.company,
         password: formData.password
       });
-    } catch (error) {
-      setError('Failed to create account. Please try again.');
+      // Navigation happens in AuthContext after successful signup
+    } catch (error: any) {
+      console.error('Signup error:', error);
+      setError(error?.message || 'Failed to create account. Please try again.');
     }
   };
 

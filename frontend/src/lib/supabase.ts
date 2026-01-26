@@ -1,12 +1,23 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.warn('⚠️ Supabase credentials not found. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your .env file');
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 // Auth helpers
 export const signUp = async (email: string, password: string) => {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return { 
+      data: null, 
+      error: { message: 'Supabase is not configured. Please set up your environment variables.' } 
+    };
+  }
+  
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -15,6 +26,13 @@ export const signUp = async (email: string, password: string) => {
 }
 
 export const signIn = async (email: string, password: string) => {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return { 
+      data: null, 
+      error: { message: 'Supabase is not configured. Please set up your environment variables.' } 
+    };
+  }
+  
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
@@ -23,11 +41,19 @@ export const signIn = async (email: string, password: string) => {
 }
 
 export const signOut = async () => {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return { error: { message: 'Supabase is not configured.' } };
+  }
+  
   const { error } = await supabase.auth.signOut()
   return { error }
 }
 
 export const getCurrentUser = async () => {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return { user: null, error: { message: 'Supabase is not configured.' } };
+  }
+  
   const { data: { user }, error } = await supabase.auth.getUser()
   return { user, error }
 }

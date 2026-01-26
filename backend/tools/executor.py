@@ -12,6 +12,20 @@ from abc import ABC, abstractmethod
 import uuid
 import re
 
+# Import orders service for real data
+try:
+    import sys
+    from pathlib import Path
+    # Add backend to path if needed
+    backend_path = Path(__file__).parent.parent
+    if str(backend_path) not in sys.path:
+        sys.path.insert(0, str(backend_path))
+    from services.orders_service import get_orders_service
+    ORDERS_SERVICE_AVAILABLE = True
+except ImportError:
+    ORDERS_SERVICE_AVAILABLE = False
+    logger.warning("Orders service not available, using mock data")
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -123,10 +137,35 @@ class LookupOrderTool(BaseTool):
         return {"order_id": order_id.upper()}
     
     def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute order lookup (mock implementation)"""
+        """Execute order lookup (uses real Supabase data if available)"""
         order_id = params["order_id"]
         
-        # Mock order data - replace with actual API call
+        # Try to use real orders service first
+        if ORDERS_SERVICE_AVAILABLE:
+            try:
+                orders_service = get_orders_service()
+                result = orders_service.lookup_order(order_id)
+                
+                if result.get("success"):
+                    order_data = result
+                    return {
+                        "success": True,
+                        "order": {
+                            "order_id": order_data.get("order_number"),
+                            "status": order_data.get("status"),
+                            "customer_name": order_data.get("customer_name"),
+                            "items": order_data.get("items", []),
+                            "total": order_data.get("total"),
+                            "shipping_address": order_data.get("shipping_address"),
+                            "estimated_delivery": order_data.get("estimated_delivery"),
+                            "tracking_number": order_data.get("tracking_number")
+                        },
+                        "message": f"Order {order_id} found"
+                    }
+            except Exception as e:
+                logger.warning(f"Error using orders service, falling back to mock: {e}")
+        
+        # Fallback to mock data if Supabase unavailable
         mock_orders = {
             "ORD123456": {
                 "order_id": "ORD123456",

@@ -4,6 +4,7 @@ import "./globals.css";
 import Navigation from "@/components/Navigation";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { VoiceSettingsProvider } from "@/contexts/VoiceSettingsContext";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -31,10 +32,12 @@ export default function RootLayout({
       >
         <ThemeProvider>
           <AuthProvider>
-            <Navigation />
-            <main className="pt-16">
-              {children}
-            </main>
+            <VoiceSettingsProvider>
+              <Navigation />
+              <main className="pt-16">
+                {children}
+              </main>
+            </VoiceSettingsProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

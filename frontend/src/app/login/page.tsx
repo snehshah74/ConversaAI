@@ -20,10 +20,17 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     
+    if (!formData.email || !formData.password) {
+      setError('Please enter both email and password');
+      return;
+    }
+    
     try {
       await login(formData.email, formData.password);
-    } catch (error) {
-      setError('Invalid email or password');
+      // Navigation happens in AuthContext after successful login
+    } catch (error: any) {
+      console.error('Login error:', error);
+      setError(error?.message || 'Invalid email or password. Please try again.');
     }
   };
 
@@ -187,9 +194,9 @@ export default function LoginPage() {
                 />
                 <span className="text-sm text-zinc-400">Remember me</span>
               </label>
-              <Link href="/forgot-password" className="text-sm text-purple-400 hover:text-purple-300">
-                Forgot password?
-              </Link>
+              <span className="text-sm text-zinc-500">
+                Forgot password? Contact support
+              </span>
             </div>
 
             <button

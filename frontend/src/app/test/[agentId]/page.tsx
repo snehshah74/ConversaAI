@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { 
   Bot, 
@@ -219,28 +219,103 @@ export default function AgentTestPage() {
     router.push('/');
   };
 
-  const handleSaveConversation = () => {
-    // TODO: Implement save conversation functionality
-    console.log('Save conversation');
+  const handleSaveConversation = async () => {
+    try {
+      // Get conversation messages from VoiceChat component
+      // For now, we'll save what we have in metrics
+      const conversationData = {
+        agent_id: agentId,
+        agent_name: agent?.name || 'Unknown',
+        duration: formatDuration(metrics.conversationDuration),
+        messages_exchanged: metrics.messagesExchanged,
+        sentiment: metrics.sentiment,
+        actions_executed: metrics.actionsExecuted,
+        success_criteria: successCriteria,
+        timestamp: new Date().toISOString()
+      };
+
+      // Save to localStorage as backup
+      const savedConversations = JSON.parse(localStorage.getItem('saved_conversations') || '[]');
+      savedConversations.push({
+        ...conversationData,
+        id: `conv_${Date.now()}`
+      });
+      localStorage.setItem('saved_conversations', JSON.stringify(savedConversations));
+
+      // Try to save to backend if API available
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        await fetch(`${apiUrl}/api/conversations/save`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(conversationData)
+        });
+      } catch (backendError) {
+        console.warn('Backend save failed, using localStorage only:', backendError);
+      }
+
+      alert('Conversation saved successfully!');
+    } catch (error) {
+      console.error('Failed to save conversation:', error);
+      alert('Failed to save conversation. Please try again.');
+    }
   };
 
   const handleExportTranscript = () => {
-    // TODO: Implement export transcript functionality
-    console.log('Export transcript');
+    try {
+      // Create transcript text
+      const transcript = [
+        `Agent Test Transcript`,
+        `Agent: ${agent?.name || 'Unknown'}`,
+        `Date: ${new Date().toLocaleString()}`,
+        `Duration: ${formatDuration(metrics.conversationDuration)}`,
+        `Messages Exchanged: ${metrics.messagesExchanged}`,
+        `Sentiment: ${metrics.sentiment}`,
+        ``,
+        `=== Success Criteria ===`,
+        ...successCriteria.map(c => `- ${c.label}: ${c.completed ? '✓' : '✗'} ${c.description}`),
+        ``,
+        `=== Actions Executed ===`,
+        ...(metrics.actionsExecuted.length > 0 
+          ? metrics.actionsExecuted.map(a => `- ${a}`)
+          : ['No actions executed']),
+        ``,
+        `=== End of Transcript ===`
+      ].join('\n');
+
+      // Create blob and download
+      const blob = new Blob([transcript], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `conversation_${agent?.name || 'agent'}_${Date.now()}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      alert('Transcript exported successfully!');
+    } catch (error) {
+      console.error('Failed to export transcript:', error);
+      alert('Failed to export transcript. Please try again.');
+    }
   };
 
-  const handleMetricsUpdate = (newMetrics: {
+  const handleMetricsUpdate = useCallback((newMetrics: {
     messagesExchanged: number;
     sentiment: string;
     actionsExecuted: string[];
   }) => {
-    setMetrics(prev => ({
-      ...prev,
-      messagesExchanged: newMetrics.messagesExchanged,
-      sentiment: newMetrics.sentiment,
-      actionsExecuted: newMetrics.actionsExecuted
-    }));
-  };
+    // Use setTimeout to defer state update and avoid render conflicts
+    setTimeout(() => {
+      setMetrics(prev => ({
+        ...prev,
+        messagesExchanged: newMetrics.messagesExchanged,
+        sentiment: newMetrics.sentiment,
+        actionsExecuted: newMetrics.actionsExecuted
+      }));
+    }, 0);
+  }, []);
 
   if (loading) {
     return (

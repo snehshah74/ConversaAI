@@ -3,33 +3,25 @@
 // API client and functions
 export * from './api';
 
-// Types
-export * from './types';
-
-// Re-export commonly used items
-export { default as api } from './api';
-export type { 
-  Agent, 
-  AgentCreate, 
-  AgentUpdate,
-  Conversation, 
-  ConversationCreate,
-  ChatRequest, 
-  ChatResponse,
-  Message,
-  ApiError,
-  HealthStatus,
-  ApiHealth,
-  LoadingState,
-  PaginatedResponse,
-  AgentFormData,
-  ChatFormData,
-  ConversationMetrics,
-  AgentMetrics,
-  VoiceSettings,
-  Industry,
-  Role,
+// Types - only export those not already in api
+export { 
+  type AgentCreate, 
+  type AgentUpdate,
+  type ConversationCreate,
+  type ChatRequest, 
+  type ChatResponse,
+  type ApiError,
+  type HealthStatus,
+  type ApiHealth,
+  type LoadingState,
+  type PaginatedResponse,
+  type AgentFormData,
+  type ChatFormData,
+  type ConversationMetrics,
+  type AgentMetrics,
+  type VoiceSettings,
+  type Industry,
+  type Role,
   INDUSTRIES,
   ROLES
 } from './types';
-
