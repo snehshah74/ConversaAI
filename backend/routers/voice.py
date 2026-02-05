@@ -8,12 +8,14 @@ import os
 from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from pydantic import BaseModel
 
 from models.database import get_db, Message, Conversation, Agent
 from models.schemas import MessageCreate, MessageSchema
+from services.tts_service import get_tts_service, _gtts_synthesize
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -211,6 +213,44 @@ async def synthesize_speech(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error while synthesizing speech"
         )
+
+
+@router.post(
+    "/synthesize-audio",
+    status_code=status.HTTP_200_OK,
+    summary="Synthesize speech and return raw audio (for Chrome fallback)",
+)
+async def synthesize_speech_audio(
+    request: VoiceSynthesizeRequest,
+    db: Session = Depends(get_db),
+):
+    """Return raw MP3 bytes for TTS. Used when browser speechSynthesis fails (e.g. Chrome)."""
+    tts = get_tts_service()
+    agent = db.query(Agent).filter(Agent.id == request.agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
+    voice_settings = request.voice_settings or agent.voice_settings or {}
+
+    # Try primary TTS, then gTTS fallback
+    audio_bytes = None
+    if tts:
+        try:
+            voice_name = (voice_settings.get("voice") or "en-US-Neural2-F") if isinstance(voice_settings, dict) else "en-US-Neural2-F"
+            audio_bytes = tts.synthesize(request.text, voice_name=voice_name)
+        except Exception as e:
+            logger.warning(f"Primary TTS failed: {e}, trying gTTS fallback")
+
+    if not audio_bytes:
+        try:
+            audio_bytes = _gtts_synthesize(request.text, lang="en")
+        except Exception as e:
+            logger.error(f"gTTS fallback failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="TTS not available. Set GOOGLE_APPLICATION_CREDENTIALS or ensure gtts is installed: pip install gtts",
+            )
+
+    return Response(content=audio_bytes, media_type="audio/mpeg")
 
 
 @router.post(

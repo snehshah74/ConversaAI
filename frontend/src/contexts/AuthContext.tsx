@@ -36,15 +36,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkUser = async () => {
     try {
-      const { user: supabaseUser, error } = await getCurrentUser();
+      // Check if Supabase is configured
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
       
-      if (error) {
-        console.error('Error checking user:', error);
+      // In development mode: no Supabase OR running on localhost → use mock user
+      const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+      const useDevAuth = process.env.NODE_ENV === 'development' && ((!supabaseUrl || !supabaseAnonKey) || isLocalhost);
+      if (useDevAuth) {
+        console.log('🔧 Development mode: Using mock authentication (localhost bypass)');
+        const mockUser: User = {
+          id: 'dev-user-123',
+          name: 'Development User',
+          email: 'dev@localhost',
+          company: 'Local Development'
+        };
+        setUser(mockUser);
+        setIsLoading(false);
+        
+        // Save to localStorage
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('user', JSON.stringify(mockUser));
+          } catch (error) {
+            console.error('Error saving to localStorage:', error);
+          }
+        }
+        return;
+      }
+
+      // Only try to get user if Supabase is configured
+      if (!supabaseUrl || !supabaseAnonKey) {
         setUser(null);
         setIsLoading(false);
         return;
       }
 
+      const { user: supabaseUser, error } = await getCurrentUser();
+      
+      // If error is about missing session, that's OK - user is just not logged in
+      if (error && !error.message?.includes('session')) {
+        console.error('Error checking user:', error);
+      }
+      
       if (supabaseUser) {
         // Map Supabase user to our User interface
         const userData: User = {

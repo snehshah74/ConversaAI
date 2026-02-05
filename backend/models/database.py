@@ -7,9 +7,11 @@ from sqlalchemy.sql import func
 from sqlalchemy.types import TypeDecorator, CHAR
 import uuid
 import os
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 
 # UUID type that works with both SQLite and PostgreSQL
@@ -186,6 +188,34 @@ def init_db():
     Base.metadata.create_all(bind=engine)
 
 
+DEFAULT_POLICY_CONTENT = """
+
+POLICIES (use when customers ask about policies):
+- Returns: 30-day return policy. Items must be unused and in original packaging. Refunds processed within 5-7 business days.
+- Shipping: Standard shipping 5-7 business days. Express 2-3 business days. Free shipping on orders over $50.
+- Warranty: 1-year limited warranty on all products. Contact support for warranty claims.
+- Website policies: Full policy documents available at company website. For specific policy questions, offer to transfer to human agent."""
+
+
+def enrich_agent_knowledge():
+    """Add default policy content to agents with minimal knowledge_base (one-time enrichment)"""
+    db = SessionLocal()
+    try:
+        agents = db.query(Agent).all()
+        for agent in agents:
+            kb = (agent.knowledge_base or "").strip()
+            # Only enrich if knowledge is short and doesn't already have policy content
+            if len(kb) < 200 and "policy" not in kb.lower() and "return" not in kb.lower():
+                agent.knowledge_base = kb + DEFAULT_POLICY_CONTENT
+                logger.info(f"Enriched agent {agent.name} ({agent.id}) with default policy content")
+        db.commit()
+    except Exception as e:
+        logger.error(f"Error enriching agent knowledge: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 def create_sample_data():
     """Create sample data for testing"""
     db = SessionLocal()
@@ -198,7 +228,13 @@ def create_sample_data():
                 industry="Technology",
                 role="Customer Support",
                 personality="Friendly, helpful, and professional",
-                knowledge_base="Technical support for software products, troubleshooting, account management",
+                knowledge_base="""Technical support for software products, troubleshooting, account management.
+
+POLICIES (use when customers ask about policies):
+- Returns: 30-day return policy. Items must be unused and in original packaging. Refunds processed within 5-7 business days.
+- Shipping: Standard shipping 5-7 business days. Express 2-3 business days. Free shipping on orders over $50.
+- Warranty: 1-year limited warranty on all products. Contact support for warranty claims.
+- Website policies: Full policy documents available at company website. For specific policy questions, offer to transfer to human agent.""",
                 greeting="Hello! I'm your customer support assistant. How can I help you today?",
                 voice_settings={
                     "voice": "en-US-Standard-A",

@@ -210,3 +210,27 @@ export async function getConversation(id: string): Promise<Conversation> {
   
   return response.json();
 }
+
+/** Fetch TTS audio as blob (for Chrome when speechSynthesis fails). Returns null if TTS unavailable. */
+export async function synthesizeSpeechAudio(
+  agentId: string,
+  text: string,
+  voiceSettings?: Record<string, unknown>
+): Promise<Blob | null> {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  try {
+    const response = await fetch(`${apiUrl}/api/voice/synthesize-audio`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agent_id: agentId,
+        text,
+        voice_settings: voiceSettings ?? undefined,
+      }),
+    });
+    if (!response.ok) return null;
+    return response.blob();
+  } catch {
+    return null;
+  }
+}

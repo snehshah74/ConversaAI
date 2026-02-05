@@ -138,7 +138,13 @@ async def chat_with_agent(
                 logger.info(f"✅ Added {len(relevant_knowledge)} knowledge chunks to agent context")
             else:
                 logger.warning(f"⚠️ No relevant knowledge found for query: '{chat_request.message[:50]}'")
-                agent_config['knowledge_context'] = ""
+                # Use agent's knowledge_base field as fallback when no vector results
+                agent_kb = (agent_db.knowledge_base or '').strip()
+                if agent_kb and len(agent_kb) > 20:
+                    agent_config['knowledge_context'] = f"\n\n=== AGENT KNOWLEDGE (use when relevant) ===\n{agent_kb}\n=== END AGENT KNOWLEDGE ===\n\n"
+                    logger.info(f"✅ Using agent's knowledge_base ({len(agent_kb)} chars) as fallback")
+                else:
+                    agent_config['knowledge_context'] = ""
                 
         except Exception as kb_error:
             logger.error(f"❌ Error searching knowledge base: {kb_error}", exc_info=True)

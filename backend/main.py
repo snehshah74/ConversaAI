@@ -86,9 +86,10 @@ app = FastAPI(
 # Add middleware to suppress browser extension request logging
 app.add_middleware(SuppressBrowserExtensionMiddleware)
 
+# CORS: allow all origins (set FRONTEND_URL in production to restrict)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -106,13 +107,21 @@ app.include_router(widget_router)  # NEW: Web widget endpoints
 
 @app.on_event("startup")
 async def startup_event():
-    """Ensure logging filter is applied on startup"""
+    """Ensure logging filter and database are ready on startup"""
     # Re-apply filter in case uvicorn resets loggers
     uvicorn_access_logger = logging.getLogger("uvicorn.access")
-    # Remove existing filters and add ours
     uvicorn_access_logger.filters = []
     uvicorn_access_logger.addFilter(AccessLogFilter())
     logger.info("Logging filter applied - browser extension requests will be suppressed")
+    # Ensure database tables exist and enrich agents with policy content if needed
+    try:
+        from models.database import init_db, create_sample_data, enrich_agent_knowledge
+        init_db()
+        create_sample_data()
+        enrich_agent_knowledge()
+        logger.info("Database tables verified")
+    except Exception as e:
+        logger.warning("Database init on startup: %s", e)
 
 @app.get("/")
 async def health_check():

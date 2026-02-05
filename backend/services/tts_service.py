@@ -1,21 +1,43 @@
 """
-Text-to-Speech Service using Google Cloud TTS
-Provides high-quality voice synthesis
+Text-to-Speech Service
+Primary: Google Cloud TTS (high quality)
+Fallback: gTTS (free, no credentials - for Chrome when Google Cloud not configured)
 """
 
 import os
 import logging
-from typing import Optional, Dict, Any
-from google.cloud import texttospeech
 import io
+from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
+
+try:
+    from google.cloud import texttospeech
+except ImportError:
+    texttospeech = None  # google-cloud-texttospeech not installed; will use gTTS fallback
+
+
+def _gtts_synthesize(text: str, lang: str = "en") -> bytes:
+    """Free TTS fallback using gTTS (no credentials needed)."""
+    try:
+        from gtts import gTTS
+        tts = gTTS(text=text, lang=lang)
+        buf = io.BytesIO()
+        tts.write_to_fp(buf)
+        return buf.getvalue()
+    except ImportError:
+        raise RuntimeError("gTTS not installed. Run: pip install gtts")
+    except Exception as e:
+        logger.error(f"gTTS error: {e}")
+        raise
 
 
 class GoogleTTS:
     """Google Cloud Text-to-Speech service"""
     
     def __init__(self):
+        if texttospeech is None:
+            raise RuntimeError("google-cloud-texttospeech not installed")
         # Check for credentials
         credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
         if not credentials_path and not os.getenv("GOOGLE_API_KEY"):
@@ -33,7 +55,7 @@ class GoogleTTS:
         text: str,
         voice_name: str = "en-US-Neural2-F",
         language_code: str = "en-US",
-        audio_encoding: texttospeech.AudioEncoding = texttospeech.AudioEncoding.MP3,
+        audio_encoding: Optional[Any] = None,
         speaking_rate: float = 1.0,
         pitch: float = 0.0,
         volume_gain_db: float = 0.0
@@ -54,6 +76,8 @@ class GoogleTTS:
             Audio data as bytes
         """
         try:
+            if audio_encoding is None:
+                audio_encoding = texttospeech.AudioEncoding.MP3
             synthesis_input = texttospeech.SynthesisInput(text=text)
             
             voice = texttospeech.VoiceSelectionParams(
@@ -142,10 +166,26 @@ class GoogleTTS:
         return "en-US-Neural2-F"
 
 
-def get_tts_service() -> Optional[GoogleTTS]:
-    """Factory function to get TTS service"""
+class FallbackTTS:
+    """Free gTTS fallback when Google Cloud not configured."""
+
+    def synthesize(self, text: str, voice_name: str = "en-US-Neural2-F", **kwargs) -> bytes:
+        return _gtts_synthesize(text, lang="en")
+
+
+def get_tts_service():
+    """Factory: Google Cloud TTS if configured, else free gTTS fallback."""
     try:
         return GoogleTTS()
     except Exception as e:
-        logger.warning(f"TTS service not available: {e}")
-        return None
+        logger.warning(f"Google TTS not available ({e}), using gTTS fallback")
+        try:
+            # Just verify gTTS can be imported - skip network test to avoid false failures
+            from gtts import gTTS  # noqa: F401
+            return FallbackTTS()
+        except ImportError as e2:
+            logger.warning(f"gTTS not installed: {e2}. Run: pip install gtts")
+            return None
+        except Exception as e2:
+            logger.warning(f"gTTS fallback not available: {e2}")
+            return None

@@ -1,7 +1,22 @@
-import Link from 'next/link';
+"use client";
+
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 import { Bot, Home } from 'lucide-react';
 
 export default function NotFound() {
+  const router = useRouter();
+  const { isAuthenticated } = useAuth();
+
+  const goHome = () => {
+    // Use replace so 404 is removed from history - back button won't return to 404
+    router.replace(isAuthenticated ? '/dashboard' : '/');
+  };
+
+  const goDashboard = () => {
+    router.replace('/dashboard');
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-600 to-slate-950 flex items-center justify-center px-4">
       <div className="text-center max-w-md">
@@ -15,20 +30,20 @@ export default function NotFound() {
         </div>
         
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Link
-            href="/"
+          <button
+            onClick={goHome}
             className="inline-flex items-center justify-center px-6 py-3 bg-white text-black rounded-xl hover:bg-zinc-200 transition-colors font-semibold"
           >
             <Home className="w-5 h-5 mr-2" />
             Go Home
-          </Link>
-          <Link
-            href="/dashboard"
+          </button>
+          <button
+            onClick={goDashboard}
             className="inline-flex items-center justify-center px-6 py-3 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-colors font-semibold border border-zinc-800"
           >
             <Bot className="w-5 h-5 mr-2" />
             Dashboard
-          </Link>
+          </button>
         </div>
       </div>
     </div>

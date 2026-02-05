@@ -70,8 +70,9 @@ langchain-anthropic>=0.1.0
 langchain-groq>=0.1.0  # NEW: Groq LLM (free, fast)
 
 # Voice Services
-deepgram-sdk>=3.0.0  # NEW: Speech-to-Text
-google-cloud-texttospeech>=2.0.0  # NEW: Text-to-Speech
+deepgram-sdk>=3.0.0  # Speech-to-Text
+google-cloud-texttospeech>=2.0.0  # Text-to-Speech (Chrome)
+gtts>=2.4.0  # Free TTS fallback (no credentials)
 
 # Authentication & Security
 python-jose[cryptography]>=3.3.0

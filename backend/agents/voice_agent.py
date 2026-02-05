@@ -509,6 +509,13 @@ class VoiceAgent:
                     logger.error(f"❌ KB search failed: {kb_error}", exc_info=True)
                     kb_context = ""
             
+            # When no vector search results, use agent's knowledge_base field as fallback context
+            agent_knowledge = (self.config.get('knowledge_base') or '').strip()
+            if not kb_results_found and agent_knowledge and len(agent_knowledge) > 20:
+                kb_context = f"\n\n=== AGENT KNOWLEDGE (use this to answer when relevant) ===\n{agent_knowledge}\n=== END AGENT KNOWLEDGE ===\n\n"
+                kb_results_found = True  # Treat agent knowledge as available
+                logger.info(f"✅ Using agent's knowledge_base field ({len(agent_knowledge)} chars) as fallback")
+            
             # Build context for response generation
             context = f"""
             User message: {user_message}
@@ -531,7 +538,7 @@ class VoiceAgent:
             ⚠️ KNOWLEDGE BASE INFORMATION IS PROVIDED BELOW ⚠️
             - YOU MUST USE the knowledge base information to answer the user's question
             - The knowledge base contains the EXACT information the user needs
-            - Answer based ONLY on the knowledge base information provided
+            - Answer based on the knowledge base information provided
             - If the knowledge base has relevant information, USE IT - do NOT say "I don't have that information"
             - Extract and present the relevant information from the knowledge base in a natural, conversational way
             - Only say "I don't have that information" if the knowledge base truly doesn't contain anything related to the question
@@ -540,10 +547,12 @@ class VoiceAgent:
             else:
                 kb_instructions = """
             ⚠️ NO KNOWLEDGE BASE INFORMATION AVAILABLE ⚠️
-            - If the user asks about something specific, say "I don't have that information in my knowledge base"
-            - Use your general knowledge only for very basic questions
+            - Use your general knowledge for common customer service questions (returns, shipping, policies)
+            - For retail/customer support: you may share typical industry practices (e.g. 30-day returns, 5-7 day shipping) when asked about policies
+            - If the user asks about something very specific you cannot answer, offer to transfer them to a human agent
+            - Be helpful: suggest they check the website or speak with a team member for detailed policy documents
             """
-                response_guidance = "If you don't have specific information, say so"
+                response_guidance = "Be helpful and offer to connect with a human agent if you cannot fully answer."
             
             system_prompt = f"""
             You are a voice AI assistant for {self.config.get('company', 'our company')}.

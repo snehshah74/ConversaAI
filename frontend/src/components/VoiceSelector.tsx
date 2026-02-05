@@ -81,10 +81,10 @@ export default function VoiceSelector({
           return !femaleVoices.includes(v) && !maleVoices.includes(v);
         });
         
-        // Create options
-        femaleVoices.slice(0, 5).forEach(voice => {
+        // Create options with unique IDs
+        femaleVoices.slice(0, 5).forEach((voice, index) => {
           options.push({
-            id: voice.name,
+            id: `${voice.name}-${voice.lang}-female-${index}`,
             name: voice.name,
             gender: 'female',
             lang: voice.lang,
@@ -93,9 +93,9 @@ export default function VoiceSelector({
           });
         });
         
-        maleVoices.slice(0, 5).forEach(voice => {
+        maleVoices.slice(0, 5).forEach((voice, index) => {
           options.push({
-            id: voice.name,
+            id: `${voice.name}-${voice.lang}-male-${index}`,
             name: voice.name,
             gender: 'male',
             lang: voice.lang,
@@ -104,9 +104,9 @@ export default function VoiceSelector({
           });
         });
         
-        neutralVoices.slice(0, 3).forEach(voice => {
+        neutralVoices.slice(0, 3).forEach((voice, index) => {
           options.push({
-            id: voice.name,
+            id: `${voice.name}-${voice.lang}-neutral-${index}`,
             name: voice.name,
             gender: 'neutral',
             lang: voice.lang,
@@ -171,15 +171,22 @@ export default function VoiceSelector({
       const defaultVoice = voices.find(v => v.lang.startsWith('en')) || voices[0];
       if (defaultVoice) utterance.voice = defaultVoice;
     } else {
-      const voice = availableVoices.find(v => v.name === voiceId);
-      if (voice) utterance.voice = voice;
+      // Find voice: option.id is like "Google UK English Female-en-GB-female-0"
+      // Look up by matching option.id or by finding voice whose name is at start of id
+      const option = voiceOptions.find(o => o.id === voiceId);
+      if (option?.voice) {
+        utterance.voice = option.voice;
+      } else {
+        const voice = availableVoices.find(v => voiceId.startsWith(v.name + '-') || voiceId === v.name);
+        if (voice) utterance.voice = voice;
+      }
     }
 
     utterance.onend = () => setTestingVoice(null);
     utterance.onerror = () => setTestingVoice(null);
 
     speechSynthesis.speak(utterance);
-  }, [availableVoices, speechRate, speechPitch, testingVoice]);
+  }, [voiceOptions, availableVoices, speechRate, speechPitch, testingVoice]);
 
   if (isLoading) {
     return (
@@ -197,13 +204,14 @@ export default function VoiceSelector({
       </label>
       
       <div className="grid grid-cols-1 gap-3 max-h-96 overflow-y-auto">
-        {voiceOptions.map((option) => {
-          const isSelected = selectedVoice === option.id;
-          const isTesting = testingVoice === option.id;
+        {voiceOptions.map((option, index) => {
+          // Handle both new format (with lang/gender/index) and old format (just name)
+          const isSelected = selectedVoice === option.id || selectedVoice === option.name;
+          const isTesting = testingVoice === option.id || testingVoice === option.name;
           
           return (
             <div
-              key={option.id}
+              key={`${option.id}-${index}`}
               className={`
                 relative p-4 rounded-lg border-2 cursor-pointer transition-all duration-200
                 ${isSelected 

@@ -44,17 +44,17 @@ export default function LandingPage() {
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link 
-                href="/signup" 
+                href="/dashboard" 
                 className="group px-8 py-4 bg-white text-black rounded-xl hover:bg-zinc-200 transition-all font-semibold text-lg flex items-center justify-center"
               >
-                Get Started Free
+                Go to Dashboard
                 <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Link>
               <Link 
-                href="/login" 
+                href="/agents/create" 
                 className="px-8 py-4 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-colors font-semibold text-lg border border-zinc-800"
               >
-                Sign In
+                Create Agent
               </Link>
           </div>
 

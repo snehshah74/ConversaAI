@@ -18,7 +18,7 @@ import {
   Send
 } from 'lucide-react';
 import Link from 'next/link';
-import { startConversation, sendMessage } from '@/lib/api';
+import { startConversation, sendMessage, synthesizeSpeechAudio } from '@/lib/api';
 import type { Message, Agent } from '@/lib/types';
 import { useVoiceSettings } from '@/contexts/VoiceSettingsContext';
 import VoiceOnboarding from './VoiceOnboarding';
@@ -112,6 +112,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
   }, [conversationId, errorState?.type, settings.prefersTextOnly]);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const ttsFallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isRecognitionActiveRef = useRef<boolean>(false);
@@ -125,27 +126,29 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
   const greetingSpokenRef = useRef<boolean>(false); // Prevents greeting from being spoken twice
   const lastSentMessageRef = useRef<string>(''); // Prevents duplicate messages
   const lastSpeechTimeRef = useRef<number>(0); // Track when speech was last detected
+  const agentSpokeAtRef = useRef<number>(0); // Ignore transcripts shortly after agent speaks (echo prevention)
+  const lastAgentMessageRef = useRef<string>(''); // Reject transcripts that match agent's last message (echo)
   
-  // Common false positives to filter out (unless part of longer speech)
-  const FALSE_POSITIVES = ['no', 'uh', 'um', 'hmm', 'ah', 'oh', 'yeah', 'yes', 'ok', 'okay', 'huh', 'what'];
+  // Common false positives / noise transcriptions to filter out
+  const FALSE_POSITIVES = ['no', 'uh', 'um', 'hmm', 'ah', 'oh', 'yeah', 'yes', 'ok', 'okay', 'huh', 'what', 'the', 'a', 'an', 'like', 'your', 'ref', 'pie', 'scratch', 'from', 'start'];
   
-  // Check if transcript is valid (not just noise/false positive)
+  // Check if transcript is valid (not just noise/false positive/echo)
   const isValidTranscript = useCallback((transcript: string): boolean => {
     const trimmed = transcript.trim().toLowerCase();
     
-    // Must have at least 3 characters
-    if (trimmed.length < 3) {
+    // Must have at least 5 characters (stricter - filters "like", "your", etc.)
+    if (trimmed.length < 5) {
       return false;
     }
     
-    // Must have at least 2 words OR be longer than 10 characters
     const words = trimmed.split(/\s+/).filter(w => w.length > 0);
-    if (words.length < 2 && trimmed.length < 10) {
-      // Check if it's a common false positive
-      if (FALSE_POSITIVES.includes(trimmed)) {
-        console.log('🚫 Filtered out false positive:', trimmed);
-        return false;
-      }
+    
+    // Require at least 4 words OR (3 words + 20+ chars) - filters noise like "like your ref"
+    if (words.length < 4 && trimmed.length < 20) {
+      if (FALSE_POSITIVES.includes(trimmed)) return false;
+      if (words.length <= 2) return false;
+      // 3 short words = likely false positive
+      if (words.some(w => FALSE_POSITIVES.includes(w))) return false;
     }
     
     // Must have at least one letter (not just numbers/punctuation)
@@ -205,16 +208,34 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
       let sendTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
       recognition.onresult = (event) => {
+        // Ignore transcripts for 2.5s after agent spoke (prevents echo from speakers)
+        const agentCooldownMs = 2500;
+        if (Date.now() - agentSpokeAtRef.current < agentCooldownMs) {
+          setCurrentTranscript('');
+          return;
+        }
+
         let finalTranscript = '';
         let interimTranscript = '';
+        let finalConfidence = 1;
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
+          const result = event.results[i];
+          const alternative = result[0];
+          const transcript = alternative.transcript;
+          if (result.isFinal) {
             finalTranscript += transcript;
+            const c = typeof alternative.confidence === 'number' ? alternative.confidence : 1;
+            if (c < finalConfidence) finalConfidence = c;
           } else {
             interimTranscript += transcript;
           }
+        }
+
+        // Require confidence > 0.5 for final transcripts (filters noise/echo)
+        if (finalTranscript && finalConfidence < 0.5) {
+          setCurrentTranscript('');
+          return;
         }
 
         console.log('📝 Speech result:', { interimTranscript, finalTranscript, isFinal: finalTranscript.length > 0 });
@@ -232,6 +253,19 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
             console.log('🚫 Invalid transcript filtered out:', message);
             setCurrentTranscript('');
             return;
+          }
+          
+          // Reject if transcript matches agent's last message (echo from speakers)
+          const agentMsg = lastAgentMessageRef.current.toLowerCase();
+          if (agentMsg.length > 10) {
+            const userWords = new Set(message.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+            const agentWords = new Set(agentMsg.split(/\s+/).filter(w => w.length > 2));
+            const overlap = [...userWords].filter(w => agentWords.has(w)).length;
+            if (userWords.size > 0 && overlap / userWords.size > 0.6) {
+              console.log('🚫 Echo detected (matches agent message), ignoring:', message.substring(0, 50));
+              setCurrentTranscript('');
+              return;
+            }
           }
           
           // Prevent duplicate messages
@@ -283,6 +317,19 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
               setCurrentTranscript('');
               lastInterimTranscript = '';
               return;
+            }
+            
+            // Reject echo (matches agent's last message)
+            const agentMsg = lastAgentMessageRef.current.toLowerCase();
+            if (agentMsg.length > 10) {
+              const userWords = new Set(message.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+              const agentWords = new Set(agentMsg.split(/\s+/).filter(w => w.length > 2));
+              const overlap = [...userWords].filter(w => agentWords.has(w)).length;
+              if (userWords.size > 0 && overlap / userWords.size > 0.6) {
+                setCurrentTranscript('');
+                lastInterimTranscript = '';
+                return;
+              }
             }
             
             // Prevent duplicate messages
@@ -552,13 +599,12 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
   }, []);
 
   // Speak text using speech synthesis (defined before handleUserMessage)
-  // Uses Chrome workarounds for the notorious speechSynthesis bugs
-  const speakText = useCallback((text: string) => {
+  // Chrome: Always use backend TTS (speechSynthesis is unreliable in Chrome)
+  const speakText = useCallback(async (text: string, immediate = false) => {
     if (!text || text.trim().length === 0) return;
-    if (!('speechSynthesis' in window) || !speechSynthesis) return;
     
-    // Stop listening while agent speaks
-    if (recognitionRef.current && isRecognitionActiveRef.current) {
+    // Stop listening while agent speaks (skip when immediate to preserve user-gesture tick in Chrome)
+    if (!immediate && recognitionRef.current && isRecognitionActiveRef.current) {
       try {
         recognitionRef.current.stop();
       } catch (e) { /* ignore */ }
@@ -566,11 +612,104 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
       setIsListening(false);
     }
     
-    // CHROME WORKAROUND: Wait for recognition to fully stop
-    setTimeout(() => {
+    // CHROME: Always use backend TTS (speechSynthesis is broken/unreliable)
+    const isChromeBrowser = typeof navigator !== 'undefined' && /Chrome/i.test(navigator.userAgent) && !/Edge/i.test(navigator.userAgent);
+    if (isChromeBrowser) {
       try {
-        // Get voices first
-        const voices = speechSynthesis.getVoices();
+        console.log('🔊 Chrome: Using backend TTS for:', text.substring(0, 50));
+        setIsSpeaking(true);
+        isSpeakingRef.current = true;
+        if (immediate) setAudioUnlocked(true);
+        
+        const blob = await synthesizeSpeechAudio(agentId, text, agent?.voice_settings);
+        if (!blob) {
+          setIsSpeaking(false);
+          isSpeakingRef.current = false;
+          // Restart mic when TTS fails - otherwise mic stays off
+          setTimeout(() => {
+            if (conversationIdRef.current && !isMutedRef.current && recognitionRef.current) {
+              try {
+                recognitionRef.current.start();
+                isRecognitionActiveRef.current = true;
+                setIsListening(true);
+              } catch (e) { /* ignore */ }
+            }
+          }, 500);
+          throw null; // Fall through to speechSynthesis
+        }
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        
+        audio.onended = () => {
+          URL.revokeObjectURL(url);
+          agentSpokeAtRef.current = Date.now(); // Cooldown to prevent echo
+          setIsSpeaking(false);
+          isSpeakingRef.current = false;
+          const tryRestart = (retryCount = 0) => {
+            if (conversationIdRef.current && !isMutedRef.current && recognitionRef.current) {
+              try {
+                recognitionRef.current.start();
+                isRecognitionActiveRef.current = true;
+                setIsListening(true);
+              } catch (e) {
+                if (retryCount < 2) setTimeout(() => tryRestart(retryCount + 1), 1000);
+              }
+            }
+          };
+          setTimeout(() => tryRestart(), 600); // Delay to let echo die down
+        };
+        
+        audio.onerror = (e) => {
+          console.error('❌ Chrome backend TTS audio error:', e);
+          URL.revokeObjectURL(url);
+          agentSpokeAtRef.current = Date.now();
+          setIsSpeaking(false);
+          isSpeakingRef.current = false;
+          setTimeout(() => {
+            if (conversationIdRef.current && !isMutedRef.current && recognitionRef.current) {
+              try {
+                recognitionRef.current.start();
+                isRecognitionActiveRef.current = true;
+                setIsListening(true);
+              } catch (e2) { /* ignore */ }
+            }
+          }, 500);
+        };
+        
+        await audio.play();
+        return; // Chrome path complete
+      } catch (error: unknown) {
+        // Backend TTS unavailable - fall through to speechSynthesis (expected when credentials not set)
+        console.warn('Backend TTS unavailable, using browser speech:', (error as Error)?.message);
+        setIsSpeaking(false);
+        isSpeakingRef.current = false;
+        // Restart mic when TTS fails - otherwise mic stays off after first exchange
+        setTimeout(() => {
+          if (conversationIdRef.current && !isMutedRef.current && recognitionRef.current) {
+            try {
+              recognitionRef.current.start();
+              isRecognitionActiveRef.current = true;
+              setIsListening(true);
+            } catch (e) { /* ignore */ }
+          }
+        }, 500);
+      }
+    }
+    
+    // Safari/Other browsers: Use speechSynthesis
+    if (!('speechSynthesis' in window) || !speechSynthesis) {
+      console.warn('⚠️ speechSynthesis not available');
+      return;
+    }
+    
+    const doSpeak = () => {
+      try {
+        // Get voices (Chrome loads async - may be empty on first call)
+        let voices = speechSynthesis.getVoices();
+        if (voices.length === 0 && /Chrome/i.test(navigator.userAgent)) {
+          // Chrome: voices load async; use default by not setting voice
+          voices = [];
+        }
         
         // Use agent's voice settings if available, otherwise use user settings
         const agentVoiceSettings = agent?.voice_settings || {};
@@ -587,7 +726,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
           selectedVoice = voices.find(v => v.name === voiceName) || null;
         }
         
-        if (!selectedVoice) {
+        if (!selectedVoice && voices.length > 0) {
           // Fall back to gender-based selection
           if (voiceGender === 'female') {
             selectedVoice = voices.find(v => {
@@ -622,11 +761,17 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
         synthesisRef.current = utterance;
 
       utterance.onstart = () => {
+        if (ttsFallbackTimeoutRef.current) {
+          clearTimeout(ttsFallbackTimeoutRef.current);
+          ttsFallbackTimeoutRef.current = null;
+        }
+        if (immediate) setAudioUnlocked(true);
         setIsSpeaking(true);
-          isSpeakingRef.current = true;
+        isSpeakingRef.current = true;
       };
 
       utterance.onend = () => {
+        agentSpokeAtRef.current = Date.now();
         setIsSpeaking(false);
           isSpeakingRef.current = false;
           synthesisRef.current = null;
@@ -665,6 +810,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
         };
         
         utterance.onerror = () => {
+          agentSpokeAtRef.current = Date.now();
           setIsSpeaking(false);
           isSpeakingRef.current = false;
           synthesisRef.current = null;
@@ -681,7 +827,12 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
           }, 500);
         };
         
-        // Chrome fix: resume() before speak()
+        // Chrome: clear queue and resume so async-triggered speech can play
+        const isChrome = /Chrome/i.test(navigator.userAgent) && !/Edge/i.test(navigator.userAgent);
+        if (isChrome) {
+          speechSynthesis.cancel();
+          speechSynthesis.resume();
+        }
         speechSynthesis.resume();
         speechSynthesis.speak(utterance);
         
@@ -698,9 +849,79 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
           speechSynthesis.resume();
         }, 100);
         
+        // CHROME FALLBACK: If speechSynthesis never starts (e.g. blocked), use backend TTS
+        const chromeFallbackMs = 1800;
+        ttsFallbackTimeoutRef.current = setTimeout(async () => {
+          if (speechSynthesis.speaking || isSpeakingRef.current) return;
+          if (!synthesisRef.current) return;
+          const isChromeBrowser = /Chrome/i.test(navigator.userAgent) && !/Edge/i.test(navigator.userAgent);
+          if (!isChromeBrowser) return;
+          const textToSpeak = synthesisRef.current?.text ?? text;
+          synthesisRef.current = null;
+          clearInterval(keepAlive);
+          try {
+            const blob = await synthesizeSpeechAudio(agentId, textToSpeak, agent?.voice_settings);
+            if (!blob) {
+              setIsSpeaking(false);
+              isSpeakingRef.current = false;
+              setTimeout(() => {
+                if (conversationIdRef.current && !isMutedRef.current && recognitionRef.current) {
+                  try {
+                    recognitionRef.current.start();
+                    isRecognitionActiveRef.current = true;
+                    setIsListening(true);
+                  } catch (e) { /* ignore */ }
+                }
+              }, 500);
+              return;
+            }
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            audio.onended = () => {
+              URL.revokeObjectURL(url);
+              agentSpokeAtRef.current = Date.now();
+              setIsSpeaking(false);
+              isSpeakingRef.current = false;
+              setTimeout(() => {
+                if (conversationIdRef.current && !isMutedRef.current && recognitionRef.current) {
+                  try {
+                    recognitionRef.current.start();
+                    isRecognitionActiveRef.current = true;
+                    setIsListening(true);
+                  } catch (e) { /* ignore */ }
+                }
+              }, 600);
+            };
+            audio.onerror = () => {
+              URL.revokeObjectURL(url);
+              agentSpokeAtRef.current = Date.now();
+              setIsSpeaking(false);
+              isSpeakingRef.current = false;
+            };
+            setIsSpeaking(true);
+            isSpeakingRef.current = true;
+            await audio.play();
+          } catch (e) {
+            console.warn('Chrome TTS fallback failed:', e);
+            setIsSpeaking(false);
+            isSpeakingRef.current = false;
+            if (conversationIdRef.current && !isMutedRef.current && recognitionRef.current) {
+              try {
+                recognitionRef.current.start();
+                isRecognitionActiveRef.current = true;
+                setIsListening(true);
+              } catch (e2) { /* ignore */ }
+            }
+          }
+        }, chromeFallbackMs);
+        
         // Give up after 3 seconds
         setTimeout(() => {
           clearInterval(keepAlive);
+          if (ttsFallbackTimeoutRef.current) {
+            clearTimeout(ttsFallbackTimeoutRef.current);
+            ttsFallbackTimeoutRef.current = null;
+          }
           if (!isSpeakingRef.current && synthesisRef.current) {
             synthesisRef.current = null;
             if (conversationIdRef.current && !isMutedRef.current) {
@@ -732,8 +953,15 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
           }
         }, 500);
       }
-    }, 300);
-  }, [agent, settings.speechRate, settings.speechPitch, settings.speechVolume, settings.preferredVoice, settings.voiceGender, audioUnlocked]);
+    };
+
+    // Chrome: speech must start in same user-gesture tick. immediate=true => no delay.
+    if (immediate) {
+      doSpeak();
+    } else {
+      setTimeout(doSpeak, 300);
+    }
+  }, [agentId, agent, settings.speechRate, settings.speechPitch, settings.speechVolume, settings.preferredVoice, settings.voiceGender, audioUnlocked]);
 
   // Handle user message
   const handleUserMessage = useCallback(async (message: string) => {
@@ -794,6 +1022,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
         isFromUser: false
       };
 
+        lastAgentMessageRef.current = response.agent_response;
         setMessages(prev => {
         const newMessages = [...prev, agentMessage];
         
@@ -919,6 +1148,9 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
     lastSentMessageRef.current = ''; // Reset last sent message
   }, [stopListening, stopSpeaking]);
 
+  // Chrome: speechSynthesis only works after a user gesture. Speak greeting in same tick as click.
+  const isChrome = typeof navigator !== 'undefined' && /Chrome/i.test(navigator.userAgent) && !/Edge/i.test(navigator.userAgent);
+
   // Initialize conversation
   const initializeConversation = useCallback(async () => {
     // Prevent double initialization
@@ -926,6 +1158,11 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
       console.log('⚠️ Conversation already initialized');
       return;
     }
+
+    // MUST run before any await so Chrome allows speech (same user-gesture tick as "Start call" click)
+    const greetingText = agent?.greeting || 'Hello! I\'m your AI assistant. How can I help you today?';
+    speakText(greetingText, true);
+    greetingSpokenRef.current = true;
     
     // Request microphone permission automatically (only once, remembered in localStorage)
     // This is non-blocking - conversation will start even if permission is denied
@@ -991,8 +1228,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
       console.log('🆔 Conversation started:', convId);
       setConversationId(convId);
       
-      // Add greeting message
-      const greetingText = agent?.greeting || 'Hello! I\'m your AI assistant. How can I help you today?';
+      // Add greeting message (greetingText already defined at start of this function)
       const greetingMessage: ChatMessage = {
         id: `greeting-${Date.now()}`,
         conversation_id: convId,
@@ -1002,50 +1238,18 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
         isFromUser: false
       };
 
+      lastAgentMessageRef.current = greetingText;
       setMessages([greetingMessage]);
       
-      // Speak greeting ONLY ONCE (prevent double greeting)
-      if (!isMuted && !greetingSpokenRef.current) {
-        greetingSpokenRef.current = true;
-        speakText(greetingText);
-        
-        // Fallback: If speech synthesis doesn't complete in 5s, start listening anyway
-        setTimeout(() => {
-          if (!isRecognitionActiveRef.current && recognitionRef.current && !isMutedRef.current) {
-            console.log('⏰ Fallback: Starting listening after 5s timeout');
-            try {
-              isRecognitionActiveRef.current = true;
-              setIsListening(true);
-              recognitionRef.current.start();
-            } catch (e) {
-              console.error('Fallback listening start failed:', e);
-              isRecognitionActiveRef.current = false;
-              setIsListening(false);
-            }
-          }
-        }, 5000);
-      } else {
-        // If muted or already spoken, start listening immediately
-        setTimeout(() => {
-          if (recognitionRef.current && !isRecognitionActiveRef.current) {
-            try {
-              isRecognitionActiveRef.current = true;
-              setIsListening(true);
-              recognitionRef.current.start();
-            } catch (e) {
-              isRecognitionActiveRef.current = false;
-              setIsListening(false);
-            }
-          }
-        }, 500);
-      }
+      // Don't start mic here - greeting's onended will start it after agent finishes speaking.
+      // This prevents the mic from picking up the agent's greeting (echo loop).
     } catch (error) {
       console.error('Error starting conversation:', error);
       setIsConnected(false);
       setErrorState({ type: 'connection', message: 'Failed to start conversation' });
       greetingSpokenRef.current = false; // Reset on error
     }
-  }, [agentId, agent, isMuted, speakText]);
+  }, [agentId, agent, isMuted, speakText, unlockAudio]);
 
   // Initialize on mount (only speech recognition/synthesis, NOT conversation)
   useEffect(() => {
@@ -1066,14 +1270,13 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
     };
   }, []); // Only run once on mount
 
-  // Auto-start listening when conversation starts
+  // Fallback: start listening if conversation started but mic wasn't started by greeting's onended
+  // Use 6s delay so greeting (typically 5-10s) finishes first - prevents mic picking up agent echo
   useEffect(() => {
     if (conversationId && !isRecognitionActiveRef.current && !isMuted && recognitionInitializedRef.current) {
-      // Small delay to ensure recognition is ready
       const timeout = setTimeout(() => {
         startListening();
-      }, 1000);
-      
+      }, 6000);
       return () => clearTimeout(timeout);
     }
   }, [conversationId, isMuted, startListening]);
@@ -1182,19 +1385,21 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
         </div>
       </div>
 
-        {/* Audio unlock notice */}
+        {/* Audio unlock notice - Chrome requires this click before any speech */}
         {!audioUnlocked && !settings.prefersTextOnly && (
           <button
             onClick={unlockAudio}
-            className="bg-gradient-to-r from-violet-600/20 to-indigo-600/20 border border-violet-500/30 rounded-xl p-4 mx-4 mt-4 hover:from-violet-600/30 hover:to-indigo-600/30 transition-all text-left"
+            className="bg-gradient-to-r from-violet-600/20 to-indigo-600/20 border border-violet-500/30 rounded-xl p-4 mx-4 mt-4 hover:from-violet-600/30 hover:to-indigo-600/30 transition-all text-left w-full"
           >
             <div className="flex items-center space-x-3">
               <div className="p-2 bg-violet-500/20 rounded-lg">
                 <Volume2 className="w-5 h-5 text-violet-400" />
               </div>
-              <div>
+              <div className="text-left">
                 <p className="text-violet-200 font-medium">Enable Voice Output</p>
-                <p className="text-violet-300/70 text-sm">Click to allow the agent to speak responses</p>
+                <p className="text-violet-300/70 text-sm">
+                  {isChrome ? 'Chrome requires this: click here first, then start the call.' : 'Click to allow the agent to speak responses'}
+                </p>
               </div>
             </div>
           </button>
@@ -1418,7 +1623,9 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
             {!conversationId ? (
             <button
                 onClick={initializeConversation}
-                className={`p-5 rounded-full bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-400 hover:to-green-400 text-white shadow-lg shadow-emerald-500/25 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-900 ${!settings.reduceAnimations ? 'hover:scale-105' : ''}`}
+                disabled={!isChrome && !audioUnlocked}
+                title={!isChrome && !audioUnlocked ? 'Click "Enable Voice Output" above first' : 'Start conversation'}
+                className={`p-5 rounded-full bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-400 hover:to-green-400 text-white shadow-lg shadow-emerald-500/25 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 ${!settings.reduceAnimations ? 'hover:scale-105' : ''}`}
                 aria-label="Start conversation"
               >
                 <Phone className="w-7 h-7" />
