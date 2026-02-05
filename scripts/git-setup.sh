@@ -8,7 +8,7 @@ echo "================================="
 echo ""
 
 # Navigate to project directory
-cd /Users/sneh/voice-ai-agents
+cd "$(dirname "$0")/.."
 
 # Set default branch to main
 git branch -m main

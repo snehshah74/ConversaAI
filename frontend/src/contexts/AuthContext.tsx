@@ -40,9 +40,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
       const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
       
-      // In development mode: no Supabase OR running on localhost → use mock user
-      const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-      const useDevAuth = process.env.NODE_ENV === 'development' && ((!supabaseUrl || !supabaseAnonKey) || isLocalhost);
+      // Only use mock auth when Supabase is NOT configured (for local dev without auth setup)
+      const useDevAuth = process.env.NODE_ENV === 'development' && (!supabaseUrl || !supabaseAnonKey);
       if (useDevAuth) {
         console.log('🔧 Development mode: Using mock authentication (localhost bypass)');
         const mockUser: User = {

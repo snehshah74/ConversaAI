@@ -40,7 +40,7 @@ interface Agent {
 }
 
 export default function DashboardPage() {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const router = useRouter();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,15 +49,15 @@ export default function DashboardPage() {
   const [deletingAgentId, setDeletingAgentId] = useState<string | null>(null);
 
   useEffect(() => {
-    loadAgents();
-  }, []);
+    if (user) loadAgents();
+  }, [user?.id]);
 
   const loadAgents = async () => {
     try {
       setError(null);
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       console.log('🔄 Loading agents from:', apiUrl);
-      const data = await getAgents();
+      const data = await getAgents({ userId: user?.id ?? undefined });
       console.log('✅ Agents loaded:', data);
       setAgents(data || []);
     } catch (error: any) {
@@ -83,7 +83,7 @@ export default function DashboardPage() {
 
     try {
       setDeletingAgentId(agentId);
-      await deleteAgent(agentId);
+      await deleteAgent(agentId, { userId: user?.id ?? undefined });
       // Remove agent from list
       setAgents(prev => prev.filter(a => a.id !== agentId));
     } catch (error: any) {
@@ -140,10 +140,12 @@ export default function DashboardPage() {
 
         <div className="absolute bottom-0 w-full p-6 border-t border-zinc-800">
           <div className="flex items-center space-x-3 mb-4">
-            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full"></div>
-            <div className="flex-1">
-              <div className="text-sm font-medium">John Doe</div>
-              <div className="text-xs text-zinc-500">john@company.com</div>
+            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+              {user?.name?.charAt(0)?.toUpperCase() || '?'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium truncate">{user?.name || 'User'}</div>
+              <div className="text-xs text-zinc-500 truncate">{user?.email || ''}</div>
             </div>
           </div>
           <button 

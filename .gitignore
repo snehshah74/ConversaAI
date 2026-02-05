@@ -1,8 +1,17 @@
-# Environment variables
+# Environment variables and API keys - NEVER commit these
 .env
 .env.local
 .env*.local
+.env.development
+.env.production
 *.env
+backend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.production.local
+google-credentials.json
+*-credentials.json
+*.pem
 
 # Python
 __pycache__/

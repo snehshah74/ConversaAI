@@ -16,23 +16,13 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [devMode, setDevMode] = useState(false);
-  const [isLocalhost, setIsLocalhost] = useState(false);
 
-  // Check if we're in dev mode: no Supabase OR on localhost → redirect to dashboard
+  // Dev mode: Supabase not configured - show form with "Skip" option for local testing
   useEffect(() => {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
     const noSupabase = !supabaseUrl || !supabaseAnonKey;
-    const onLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-    const isDev = process.env.NODE_ENV === 'development' && (noSupabase || onLocalhost);
-    
-    setDevMode(isDev);
-    setIsLocalhost(!!onLocalhost);
-    
-    // On localhost or without Supabase, redirect to dashboard
-    if (isDev && typeof window !== 'undefined') {
-      window.location.href = '/dashboard';
-    }
+    setDevMode(process.env.NODE_ENV === 'development' && noSupabase);
   }, []);
 
   // Redirect if already authenticated
@@ -67,17 +57,19 @@ export default function LoginPage() {
     });
   };
 
-  // Don't render login form if in dev mode (redirecting)
+  // Show "Skip sign-in" option when Supabase not configured (local dev)
   if (devMode) {
     return (
       <div className="min-h-screen bg-theme text-theme flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center mx-auto mb-4">
-            <svg className="w-5 h-5 text-white animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-          </div>
-          <p className="text-zinc-400">Redirecting to dashboard...</p>
+        <div className="text-center max-w-md">
+          <p className="text-zinc-400 mb-4">Supabase not configured. Configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY for Sign-in, or:</p>
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center px-6 py-3 bg-white text-black rounded-xl hover:bg-zinc-200 transition-colors font-semibold"
+          >
+            Continue without Sign-in (Development)
+            <ArrowRight className="ml-2 w-5 h-5" />
+          </Link>
         </div>
       </div>
     );
@@ -155,15 +147,6 @@ export default function LoginPage() {
           <div className="mb-8">
             <h1 className="text-4xl font-bold mb-2">Welcome back</h1>
             <p className="text-zinc-400">Sign in to continue building Voice AI agents</p>
-            {/* Localhost: skip login and go to dashboard */}
-            {isLocalhost && (
-              <Link
-                href="/dashboard"
-                className="mt-4 inline-flex items-center px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors"
-              >
-                Skip to Dashboard (localhost)
-              </Link>
-            )}
           </div>
 
           {/* Social Sign In */}

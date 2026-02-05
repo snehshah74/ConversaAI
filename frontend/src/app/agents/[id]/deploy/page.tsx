@@ -234,7 +234,7 @@ export default function DeploymentPage() {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <Link href={`/agents/${agentId}`} className="text-slate-400 hover:text-white mb-4 inline-block">
+          <Link href={`/agents/${agentId}/edit`} className="text-slate-400 hover:text-white mb-4 inline-block">
             ← Back to Agent
           </Link>
           <h1 className="text-3xl font-bold text-white mb-2">Deploy Agent</h1>

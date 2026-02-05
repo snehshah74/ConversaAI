@@ -1,5 +1,18 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+/** Options for API calls - pass userId for user-scoped data isolation */
+export interface ApiOptions {
+  userId?: string | null;
+}
+
+function authHeaders(options?: ApiOptions): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (options?.userId) {
+    headers['X-User-Id'] = options.userId;
+  }
+  return headers;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -29,13 +42,11 @@ export interface Conversation {
 }
 
 // Agent API functions
-export async function createAgent(agentData: Partial<Agent>): Promise<Agent> {
+export async function createAgent(agentData: Partial<Agent>, options?: ApiOptions): Promise<Agent> {
   try {
     const response = await fetch(`${API_URL}/api/agents`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: authHeaders(options),
       body: JSON.stringify(agentData),
     });
     
@@ -53,17 +64,14 @@ export async function createAgent(agentData: Partial<Agent>): Promise<Agent> {
   }
 }
 
-export async function getAgents(): Promise<Agent[]> {
+export async function getAgents(options?: ApiOptions): Promise<Agent[]> {
   try {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     console.log('🔄 Fetching agents from:', `${apiUrl}/api/agents`);
     
     const response = await fetch(`${apiUrl}/api/agents`, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      // Add mode and credentials for CORS
+      headers: authHeaders(options),
       mode: 'cors',
       credentials: 'omit',
     });
@@ -94,8 +102,10 @@ export async function getAgents(): Promise<Agent[]> {
   }
 }
 
-export async function getAgent(id: string): Promise<Agent> {
-  const response = await fetch(`${API_URL}/api/agents/${id}`);
+export async function getAgent(id: string, options?: ApiOptions): Promise<Agent> {
+  const response = await fetch(`${API_URL}/api/agents/${id}`, {
+    headers: authHeaders(options),
+  });
   
   if (!response.ok) {
     throw new Error('Failed to fetch agent');
@@ -104,12 +114,10 @@ export async function getAgent(id: string): Promise<Agent> {
   return response.json();
 }
 
-export async function updateAgent(id: string, agentData: Partial<Agent>): Promise<Agent> {
+export async function updateAgent(id: string, agentData: Partial<Agent>, options?: ApiOptions): Promise<Agent> {
   const response = await fetch(`${API_URL}/api/agents/${id}`, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: authHeaders(options),
     body: JSON.stringify(agentData),
   });
   
@@ -120,10 +128,11 @@ export async function updateAgent(id: string, agentData: Partial<Agent>): Promis
   return response.json();
 }
 
-export async function deleteAgent(id: string): Promise<void> {
+export async function deleteAgent(id: string, options?: ApiOptions): Promise<void> {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
   const response = await fetch(`${apiUrl}/api/agents/${id}`, {
     method: 'DELETE',
+    headers: authHeaders(options),
   });
   
   if (!response.ok) {
@@ -144,9 +153,10 @@ export async function activateAgent(id: string): Promise<Agent> {
   return response.json();
 }
 
-export async function deactivateAgent(id: string): Promise<Agent> {
+export async function deactivateAgent(id: string, options?: ApiOptions): Promise<Agent> {
   const response = await fetch(`${API_URL}/api/agents/${id}/deactivate`, {
     method: 'PATCH',
+    headers: authHeaders(options),
   });
   
   if (!response.ok) {

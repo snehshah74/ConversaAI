@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { getAgents } from '@/lib/api';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Deployment {
   id: string;
@@ -40,6 +41,7 @@ interface Agent {
 }
 
 export default function DeploymentsPage() {
+  const { user } = useAuth();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,13 +49,16 @@ export default function DeploymentsPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   
   useEffect(() => {
-    loadAgents();
-    loadAllDeployments();
-  }, []);
+    if (user) loadAgents();
+  }, [user?.id]);
+  
+  useEffect(() => {
+    if (agents.length > 0) loadAllDeployments();
+  }, [agents]);
   
   const loadAgents = async () => {
     try {
-      const data = await getAgents();
+      const data = await getAgents({ userId: user?.id ?? undefined });
       setAgents(data);
       if (data.length > 0 && !selectedAgentId) {
         setSelectedAgentId(data[0].id);

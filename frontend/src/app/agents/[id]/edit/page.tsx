@@ -16,6 +16,7 @@ import {
 import Link from 'next/link';
 import { getAgent, updateAgent } from '@/lib/api';
 import { INDUSTRIES, ROLES } from '@/lib/types';
+import { useAuth } from '@/contexts/AuthContext';
 import VoiceSelector from '@/components/VoiceSelector';
 import KnowledgeUploader from '@/components/KnowledgeUploader';
 
@@ -99,7 +100,7 @@ function EditAgentContent() {
   const loadAgent = async () => {
     try {
       setLoading(true);
-      const agent = await getAgent(agentId);
+      const agent = await getAgent(agentId, { userId: user?.id ?? undefined });
       
       setFormData({
         name: agent.name || '',
@@ -184,7 +185,7 @@ function EditAgentContent() {
       await updateAgent(agentId, {
         ...formData,
         personality: formData.personality.join(', ')
-      });
+      }, { userId: user?.id ?? undefined });
       
       setSuccess(true);
       setTimeout(() => {

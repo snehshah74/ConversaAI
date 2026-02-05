@@ -1,6 +1,19 @@
-# ConversaAI- Voice AI Agents Platform
+# Conversa AI - Voice AI Agents Platform
 
 A production-ready platform for creating and managing AI-powered voice agents. Build intelligent conversational agents for customer support, sales, appointments, and more.
+
+## Project Structure
+
+```
+voice-ai-agents/
+├── backend/          # FastAPI backend
+├── frontend/         # Next.js frontend
+├── database/         # SQL schema files
+├── scripts/          # Deployment and setup scripts (run from project root)
+├── run.sh            # Start backend + frontend
+├── README.md         # This file
+└── env.example       # Environment template (copy to backend/.env)
+```
 
 ## 🚀 Quick Start
 
@@ -8,7 +21,8 @@ A production-ready platform for creating and managing AI-powered voice agents. B
 
 - Python 3.11+ (backend)
 - Node.js 18+ (frontend)
-- Google Gemini API key ([Get one here](https://makersuite.google.com/app/apikey))
+- API keys: Groq, Deepgram, Google Cloud TTS (see env.example)
+- Supabase (optional, for Sign-in/Sign-up)
 - PostgreSQL or SQLite (database)
 
 ### Backend Setup
@@ -143,21 +157,27 @@ python run_tests.py --coverage
 
 ### Environment Variables
 
-Create a `.env` file in the `backend/` directory (see `env.example` for reference):
+Create a `.env` file in the `backend/` directory (copy from `env.example`):
 
-```env
-# Required
-GOOGLE_API_KEY=your_api_key_here
-
-# Database
-DATABASE_URL=sqlite:///./voice_ai.db  # or PostgreSQL URL
-
-# Optional
-ENVIRONMENT=development
-HOST=0.0.0.0
-PORT=8000
-LOG_LEVEL=INFO
+```bash
+cp env.example backend/.env
+# Edit backend/.env with your API keys
 ```
+
+**Required API Keys:**
+- `GROQ_API_KEY` - LLM (free at console.groq.com)
+- `DEEPGRAM_API_KEY` - Speech-to-Text (free at deepgram.com)
+- `GOOGLE_APPLICATION_CREDENTIALS` - Path to Google Cloud TTS JSON key (or use gTTS fallback)
+
+**Frontend (optional - for Sign-in/Sign-up):**
+Create `frontend/.env.local`:
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+⚠️ **Never commit `.env` files or API keys to GitHub.** They are in `.gitignore`.
 
 ### Database Options
 
@@ -178,6 +198,7 @@ DATABASE_URL=postgresql://postgres:[PASSWORD]@[PROJECT].supabase.co:5432/postgre
 
 ## 🎨 Frontend Features
 
+- **Sign-in / Sign-up**: Configure Supabase in `frontend/.env.local` for authentication
 - **Agent Creator**: Intuitive form to create custom agents
 - **Agent Dashboard**: View and manage all your agents
 - **Voice Chat Interface**: Test agents with text or voice input

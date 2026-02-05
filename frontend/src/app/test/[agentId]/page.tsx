@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import VoiceChat from '@/components/VoiceChat';
 import { getAgent } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import type { Agent } from '@/lib/types';
 
 interface TestMetrics {
@@ -38,6 +39,7 @@ interface SuccessCriteria {
 export default function AgentTestPage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
   const agentId = params.agentId as string;
   
   const [agent, setAgent] = useState<Agent | null>(null);
@@ -70,10 +72,10 @@ export default function AgentTestPage() {
       }
     };
 
-    if (agentId) {
+    if (agentId && user) {
       loadAgent();
     }
-  }, [agentId]);
+  }, [agentId, user?.id]);
 
   // Update conversation duration
   useEffect(() => {

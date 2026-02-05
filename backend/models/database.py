@@ -74,6 +74,7 @@ class Agent(Base):
     __tablename__ = "agents"
     
     id = Column(GUID, primary_key=True, default=uuid.uuid4)
+    user_id = Column(String(36), nullable=True, index=True)  # Supabase user id for data isolation
     name = Column(String(255), nullable=False)
     company = Column(String(255), nullable=False)
     industry = Column(String(100), nullable=False)
@@ -186,6 +187,19 @@ def get_db():
 def init_db():
     """Initialize database tables"""
     Base.metadata.create_all(bind=engine)
+    # Migration: add user_id column if it doesn't exist (for existing SQLite DBs)
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            if engine.url.get_backend_name() == 'sqlite':
+                result = conn.execute(text("PRAGMA table_info(agents)"))
+                columns = [row[1] for row in result.fetchall()]
+                if 'user_id' not in columns:
+                    conn.execute(text("ALTER TABLE agents ADD COLUMN user_id VARCHAR(36)"))
+                    conn.commit()
+                    logger.info("Added user_id column to agents table")
+    except Exception as e:
+        logger.warning("Migration check for user_id: %s", e)
 
 
 DEFAULT_POLICY_CONTENT = """

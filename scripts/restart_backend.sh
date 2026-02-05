@@ -1,7 +1,7 @@
 #!/bin/bash
 # Backend Restart Script
 
-cd "$(dirname "$0")/backend"
+cd "$(dirname "$0")/../backend"
 
 echo "🛑 Stopping backend server..."
 # Kill any running uvicorn/python processes

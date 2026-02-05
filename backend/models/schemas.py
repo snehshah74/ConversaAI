@@ -24,6 +24,7 @@ class AgentCreate(BaseModel):
 class AgentResponse(BaseModel):
     """Schema for agent response data"""
     id: UUID
+    user_id: Optional[str] = None
     name: str
     company: str
     industry: str

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { createAgent } from '@/lib/api';
 import { INDUSTRIES, ROLES, type AgentCreate } from '@/lib/types';
+import { useAuth } from '@/contexts/AuthContext';
 import { getTemplateById, type AgentTemplate } from '@/lib/templates';
 import VoiceSelector from '@/components/VoiceSelector';
 import KnowledgeUploader from '@/components/KnowledgeUploader';
@@ -228,6 +229,7 @@ export default function CreateAgent() {
 function CreateAgentContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useAuth();
   const templateId = searchParams.get('template');
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(templateId || null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -480,7 +482,7 @@ function CreateAgentContent() {
         is_active: formData.is_active
       };
 
-      const newAgent = await createAgent(agentData);
+      const newAgent = await createAgent(agentData, { userId: user?.id ?? undefined });
       setCreatedAgentId(newAgent.id);
       // Don't redirect immediately - allow knowledge upload
       // router.push(`/dashboard`);

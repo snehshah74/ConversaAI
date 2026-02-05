@@ -7,7 +7,7 @@ import logging
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -22,6 +22,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["agents"])
 
 
+async def get_user_id(x_user_id: Optional[str] = Header(None, alias="X-User-Id")) -> Optional[str]:
+    """Extract user ID from request header for data isolation."""
+    return x_user_id
+
+
 @router.post(
     "/agents",
     response_model=AgentResponse,
@@ -31,7 +36,8 @@ router = APIRouter(prefix="/api", tags=["agents"])
 )
 async def create_agent(
     agent_data: AgentCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id)
 ) -> AgentResponse:
     """
     Create a new voice AI agent.
@@ -47,6 +53,7 @@ async def create_agent(
         
         # Create new agent
         agent = Agent(
+            user_id=user_id,
             name=agent_data.name,
             company=agent_data.company,
             industry=agent_data.industry,
@@ -92,16 +99,22 @@ async def create_agent(
 )
 async def get_agents(
     active_only: Optional[bool] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id)
 ) -> List[AgentResponse]:
     """
     Get all agents with optional filtering.
+    When X-User-Id header is provided, only returns agents belonging to that user.
     
     Args:
         active_only: If True, only return active agents. If None, return all agents.
     """
     try:
         query = db.query(Agent)
+        
+        # Data isolation: when user is authenticated, only return their agents
+        if user_id:
+            query = query.filter(Agent.user_id == user_id)
         
         if active_only is not None:
             query = query.filter(Agent.is_active == active_only)
@@ -126,6 +139,15 @@ async def get_agents(
         )
 
 
+def _check_agent_ownership(agent: Agent, user_id: Optional[str]) -> None:
+    """Raise 404 if agent does not belong to user (when user_id is provided)."""
+    if user_id and agent.user_id is not None and agent.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent not found"
+        )
+
+
 @router.get(
     "/agents/{agent_id}",
     response_model=AgentResponse,
@@ -135,7 +157,8 @@ async def get_agents(
 )
 async def get_agent(
     agent_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id)
 ) -> AgentResponse:
     """
     Get a specific agent by ID.
@@ -151,6 +174,8 @@ async def get_agent(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Agent with ID {agent_id} not found"
             )
+        
+        _check_agent_ownership(agent, user_id)
         
         logger.info(f"Retrieved agent {agent_id} with name '{agent.name}'")
         
@@ -182,7 +207,8 @@ async def get_agent(
 async def update_agent(
     agent_id: UUID,
     agent_data: AgentUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id)
 ) -> AgentResponse:
     """
     Update an existing agent's configuration.
@@ -199,6 +225,8 @@ async def update_agent(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Agent with ID {agent_id} not found"
             )
+        
+        _check_agent_ownership(agent, user_id)
         
         # Update fields if provided
         update_data = agent_data.dict(exclude_unset=True)
@@ -239,7 +267,8 @@ async def update_agent(
 )
 async def delete_agent(
     agent_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id)
 ):
     """
     Delete an agent and all associated data.
@@ -255,6 +284,8 @@ async def delete_agent(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Agent with ID {agent_id} not found"
             )
+        
+        _check_agent_ownership(agent, user_id)
         
         db.delete(agent)
         db.commit()
@@ -291,7 +322,8 @@ async def delete_agent(
 )
 async def activate_agent(
     agent_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id)
 ) -> AgentResponse:
     """Activate an agent."""
     try:
@@ -302,6 +334,8 @@ async def activate_agent(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Agent with ID {agent_id} not found"
             )
+        
+        _check_agent_ownership(agent, user_id)
         
         agent.is_active = True
         db.commit()
@@ -332,7 +366,8 @@ async def activate_agent(
 )
 async def deactivate_agent(
     agent_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id)
 ) -> AgentResponse:
     """Deactivate an agent."""
     try:
@@ -343,6 +378,8 @@ async def deactivate_agent(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Agent with ID {agent_id} not found"
             )
+        
+        _check_agent_ownership(agent, user_id)
         
         agent.is_active = False
         db.commit()
