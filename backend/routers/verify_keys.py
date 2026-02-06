@@ -20,15 +20,23 @@ async def verify_keys():
     """
     results = {}
 
-    # 1. DATABASE_URL
+    # 1. DATABASE_URL + agents table check
     db_url = os.getenv("DATABASE_URL", "")
     if db_url:
         try:
-            from models.database import engine
+            from models.database import engine, SessionLocal, Agent
             from sqlalchemy import text
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
             results["DATABASE_URL"] = {"status": "ok", "message": "Connected"}
+            # Also test agents table query (what /api/agents does)
+            try:
+                db = SessionLocal()
+                count = db.query(Agent).count()
+                db.close()
+                results["AGENTS_TABLE"] = {"status": "ok", "message": f"OK ({count} agents)"}
+            except Exception as e:
+                results["AGENTS_TABLE"] = {"status": "error", "message": str(e)}
         except Exception as e:
             results["DATABASE_URL"] = {"status": "error", "message": str(e)}
     else:
