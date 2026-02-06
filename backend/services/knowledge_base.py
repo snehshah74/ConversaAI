@@ -47,48 +47,9 @@ except ImportError:
     SUPABASE_AVAILABLE = False
     logging.warning("Supabase client not available. Install with: pip install supabase")
 
-try:
-    from sentence_transformers import SentenceTransformer  # type: ignore
-    SENTENCE_TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    SENTENCE_TRANSFORMERS_AVAILABLE = False
-    logging.warning("sentence-transformers not available. Install with: pip install sentence-transformers")
+from services.embedding_service import create_embedding as _create_embedding, is_embedding_available
 
 logger = logging.getLogger(__name__)
-
-# Global embedding model cache - loaded once and reused across all instances
-_embedding_model_cache = None
-_embedding_model_lock = None
-
-def get_embedding_model():
-    """Get or create embedding model (singleton pattern with thread safety)"""
-    global _embedding_model_cache, _embedding_model_lock
-    
-    if _embedding_model_cache is None:
-        import threading
-        if _embedding_model_lock is None:
-            _embedding_model_lock = threading.Lock()
-        
-        with _embedding_model_lock:
-            # Double-check pattern
-            if _embedding_model_cache is None:
-                if not SENTENCE_TRANSFORMERS_AVAILABLE:
-                    logger.warning("sentence-transformers not available, cannot create embedding model")
-                    return None
-                
-                import time
-                model_name = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
-                logger.info(f"🔄 Loading embedding model '{model_name}' (one-time operation)...")
-                start = time.time()
-                try:
-                    _embedding_model_cache = SentenceTransformer(model_name)
-                    elapsed = time.time() - start
-                    logger.info(f"✅ Embedding model loaded in {elapsed:.2f}s - will be reused for all requests")
-                except Exception as e:
-                    logger.error(f"❌ Failed to load embedding model: {e}")
-                    return None
-    
-    return _embedding_model_cache
 
 
 class DocumentProcessor:
@@ -276,26 +237,18 @@ class KnowledgeBaseService:
     
     def __init__(self, agent_id: str):
         self.agent_id = agent_id
-        self.embedding_model = None
         self.supabase_client = None
         self.chunker = TextChunker(chunk_size=500, overlap=50)
         # Fallback in-memory storage
         self._fallback_storage: List[Dict[str, Any]] = []
         
-        # Initialize embedding model
-        self._initialize_embedding_model()
-        
         # Initialize Supabase client
         self._initialize_supabase()
-    
-    def _initialize_embedding_model(self):
-        """Initialize sentence transformer model for embeddings - uses cached model"""
-        # Use global cached model instead of creating new one
-        self.embedding_model = get_embedding_model()
-        if self.embedding_model:
-            logger.info(f"✅ Using cached embedding model (no reload needed)")
+        
+        if is_embedding_available():
+            logger.info("✅ RAG embeddings available (OpenAI or sentence-transformers)")
         else:
-            logger.warning("Embedding model not available, using fallback")
+            logger.warning("Embedding not available. Set OPENAI_API_KEY or install sentence-transformers for RAG.")
     
     def _initialize_supabase(self):
         """Initialize Supabase client"""
@@ -367,17 +320,8 @@ class KnowledgeBaseService:
             self.supabase_client = None
     
     def create_embedding(self, text: str) -> List[float]:
-        """Create embedding for text"""
-        if not self.embedding_model:
-            logger.warning("Embedding model not available, returning empty embedding")
-            return []
-        
-        try:
-            embedding = self.embedding_model.encode(text, convert_to_numpy=True).tolist()
-            return embedding
-        except Exception as e:
-            logger.error(f"Error creating embedding: {e}")
-            return []
+        """Create 384-dim embedding for text (OpenAI API or sentence-transformers)"""
+        return _create_embedding(text)
     
     def upload_document(
         self,
@@ -683,7 +627,7 @@ class KnowledgeBaseService:
     ) -> List[Dict[str, Any]]:
         """Search knowledge base using semantic similarity"""
         try:
-            if not self.embedding_model or not self.supabase_client:
+            if not is_embedding_available() or not self.supabase_client:
                 return self._fallback_text_search(query, top_k)
             
             # Create query embedding

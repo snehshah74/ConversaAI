@@ -74,6 +74,7 @@ from routers.training import router as training_router
 from routers.knowledge import router as knowledge_router
 from routers.deployments import router as deployments_router
 from routers.widget import router as widget_router
+from routers.verify_keys import router as verify_keys_router
 from models.schemas import ErrorResponse
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -104,6 +105,7 @@ app.include_router(training_router)  # NEW: Training endpoints for learning from
 app.include_router(knowledge_router)  # NEW: Knowledge base endpoints for document uploads
 app.include_router(deployments_router)  # NEW: Deployment management endpoints
 app.include_router(widget_router)  # NEW: Web widget endpoints
+app.include_router(verify_keys_router)  # API key verification
 
 @app.on_event("startup")
 async def startup_event():

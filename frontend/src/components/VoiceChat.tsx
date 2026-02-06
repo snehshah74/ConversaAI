@@ -113,6 +113,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const ttsFallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const micRestartSafetyRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isRecognitionActiveRef = useRef<boolean>(false);
@@ -136,20 +137,20 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
   const isValidTranscript = useCallback((transcript: string): boolean => {
     const trimmed = transcript.trim().toLowerCase();
     
-    // Must have at least 5 characters (stricter - filters "like", "your", etc.)
-    if (trimmed.length < 5) {
+    // Must have at least 4 characters (filters "no", "um", "uh")
+    if (trimmed.length < 4) {
       return false;
     }
     
     const words = trimmed.split(/\s+/).filter(w => w.length > 0);
     
-    // Require at least 4 words OR (3 words + 20+ chars) - filters noise like "like your ref"
-    if (words.length < 4 && trimmed.length < 20) {
+    // Require at least 3 words OR (2 words + 15+ chars) - filters noise but allows "Monday 10am works"
+    if (words.length < 3 && trimmed.length < 15) {
       if (FALSE_POSITIVES.includes(trimmed)) return false;
-      if (words.length <= 2) return false;
-      // 3 short words = likely false positive
-      if (words.some(w => FALSE_POSITIVES.includes(w))) return false;
+      if (words.length <= 1) return false;
     }
+    // Reject if all words are known false positives
+    if (words.length <= 2 && words.every(w => FALSE_POSITIVES.includes(w.toLowerCase()))) return false;
     
     // Must have at least one letter (not just numbers/punctuation)
     if (!/[a-zA-Z]/.test(trimmed)) {
@@ -157,6 +158,30 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
     }
     
     return true;
+  }, []);
+
+  // Restart mic with retries (handles Chrome/Safari quirks where start() may fail once)
+  const restartMicAfterSpeech = useCallback((delayMs = 600, maxRetries = 3) => {
+    const tryStart = (retry = 0) => {
+      if (micRestartSafetyRef.current) {
+        clearTimeout(micRestartSafetyRef.current);
+        micRestartSafetyRef.current = null;
+      }
+      if (!conversationIdRef.current || isMutedRef.current || !recognitionRef.current) return;
+      try {
+        recognitionRef.current.start();
+        isRecognitionActiveRef.current = true;
+        setIsListening(true);
+        console.log('✅ Mic restarted after agent spoke');
+      } catch (e) {
+        if (retry < maxRetries) {
+          setTimeout(() => tryStart(retry + 1), 800 * (retry + 1));
+        } else {
+          console.warn('⚠️ Mic restart failed after retries');
+        }
+      }
+    };
+    setTimeout(() => tryStart(), delayMs);
   }, []);
 
   // Keep refs in sync with state (to avoid stale closures in callbacks)
@@ -625,55 +650,46 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
         if (!blob) {
           setIsSpeaking(false);
           isSpeakingRef.current = false;
-          // Restart mic when TTS fails - otherwise mic stays off
-          setTimeout(() => {
-            if (conversationIdRef.current && !isMutedRef.current && recognitionRef.current) {
-              try {
-                recognitionRef.current.start();
-                isRecognitionActiveRef.current = true;
-                setIsListening(true);
-              } catch (e) { /* ignore */ }
-            }
-          }, 500);
+          restartMicAfterSpeech(500);
           throw null; // Fall through to speechSynthesis
         }
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
         
+        // Safety: if onended never fires (long audio, tab switch), force mic restart after 10s
+        micRestartSafetyRef.current = setTimeout(() => {
+          if (!isRecognitionActiveRef.current && recognitionRef.current && conversationIdRef.current && !isMutedRef.current) {
+            setIsSpeaking(false);
+            isSpeakingRef.current = false;
+            restartMicAfterSpeech(300);
+            console.log('✅ Mic restarted (safety timeout - onended may not have fired)');
+          }
+          micRestartSafetyRef.current = null;
+        }, 10000);
+        
         audio.onended = () => {
           URL.revokeObjectURL(url);
+          if (micRestartSafetyRef.current) {
+            clearTimeout(micRestartSafetyRef.current);
+            micRestartSafetyRef.current = null;
+          }
           agentSpokeAtRef.current = Date.now(); // Cooldown to prevent echo
           setIsSpeaking(false);
           isSpeakingRef.current = false;
-          const tryRestart = (retryCount = 0) => {
-            if (conversationIdRef.current && !isMutedRef.current && recognitionRef.current) {
-              try {
-                recognitionRef.current.start();
-                isRecognitionActiveRef.current = true;
-                setIsListening(true);
-              } catch (e) {
-                if (retryCount < 2) setTimeout(() => tryRestart(retryCount + 1), 1000);
-              }
-            }
-          };
-          setTimeout(() => tryRestart(), 600); // Delay to let echo die down
+          restartMicAfterSpeech(600);
         };
         
         audio.onerror = (e) => {
           console.error('❌ Chrome backend TTS audio error:', e);
           URL.revokeObjectURL(url);
+          if (micRestartSafetyRef.current) {
+            clearTimeout(micRestartSafetyRef.current);
+            micRestartSafetyRef.current = null;
+          }
           agentSpokeAtRef.current = Date.now();
           setIsSpeaking(false);
           isSpeakingRef.current = false;
-          setTimeout(() => {
-            if (conversationIdRef.current && !isMutedRef.current && recognitionRef.current) {
-              try {
-                recognitionRef.current.start();
-                isRecognitionActiveRef.current = true;
-                setIsListening(true);
-              } catch (e2) { /* ignore */ }
-            }
-          }, 500);
+          restartMicAfterSpeech(500);
         };
         
         await audio.play();
@@ -683,16 +699,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
         console.warn('Backend TTS unavailable, using browser speech:', (error as Error)?.message);
         setIsSpeaking(false);
         isSpeakingRef.current = false;
-        // Restart mic when TTS fails - otherwise mic stays off after first exchange
-        setTimeout(() => {
-          if (conversationIdRef.current && !isMutedRef.current && recognitionRef.current) {
-            try {
-              recognitionRef.current.start();
-              isRecognitionActiveRef.current = true;
-              setIsListening(true);
-            } catch (e) { /* ignore */ }
-          }
-        }, 500);
+        restartMicAfterSpeech(500);
       }
     }
     
@@ -771,60 +778,23 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
       };
 
       utterance.onend = () => {
+        if (micRestartSafetyRef.current) {
+          clearTimeout(micRestartSafetyRef.current);
+          micRestartSafetyRef.current = null;
+        }
         agentSpokeAtRef.current = Date.now();
         setIsSpeaking(false);
-          isSpeakingRef.current = false;
-          synthesisRef.current = null;
-          
-          // Restart listening after speech ends - improved logic
-          setTimeout(() => {
-            if (conversationIdRef.current && !isMutedRef.current) {
-              try {
-                // Always restart - don't check isRecognitionActiveRef as it might be stale
-                if (recognitionRef.current) {
-                  recognitionRef.current.stop(); // Stop first to reset state
-                  setTimeout(() => {
-                    if (recognitionRef.current && conversationIdRef.current && !isMutedRef.current) {
-                      recognitionRef.current.start();
-                      isRecognitionActiveRef.current = true;
-                      setIsListening(true);
-                      console.log('✅ Restarted listening after speech ended');
-                    }
-                  }, 300);
-                }
-              } catch (e) { 
-                console.warn('⚠️ Error restarting recognition after speech:', e);
-                // Try again after a longer delay
-                setTimeout(() => {
-                  if (recognitionRef.current && conversationIdRef.current && !isMutedRef.current) {
-                    try {
-                      recognitionRef.current.start();
-                      isRecognitionActiveRef.current = true;
-                      setIsListening(true);
-                    } catch (e2) { /* ignore */ }
-                  }
-                }, 1000);
-              }
-            }
-          }, 500);
-        };
+        isSpeakingRef.current = false;
+        synthesisRef.current = null;
+        restartMicAfterSpeech(500);
+      };
         
         utterance.onerror = () => {
           agentSpokeAtRef.current = Date.now();
           setIsSpeaking(false);
           isSpeakingRef.current = false;
           synthesisRef.current = null;
-          
-          // Restart listening
-          setTimeout(() => {
-            if (conversationIdRef.current && !isMutedRef.current && !isRecognitionActiveRef.current) {
-              try {
-                recognitionRef.current?.start();
-                isRecognitionActiveRef.current = true;
-                setIsListening(true);
-              } catch (e) { /* ignore */ }
-            }
-          }, 500);
+          restartMicAfterSpeech(500);
         };
         
         // Chrome: clear queue and resume so async-triggered speech can play
@@ -835,6 +805,18 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
         }
         speechSynthesis.resume();
         speechSynthesis.speak(utterance);
+        
+        // Safety: if onend never fires, restart mic after 12s (speechSynthesis can be unreliable)
+        micRestartSafetyRef.current = setTimeout(() => {
+          if (!isRecognitionActiveRef.current && recognitionRef.current && conversationIdRef.current && !isMutedRef.current) {
+            setIsSpeaking(false);
+            isSpeakingRef.current = false;
+            synthesisRef.current = null;
+            restartMicAfterSpeech(300);
+            console.log('✅ Mic restarted (safety timeout - speechSynthesis onend may not have fired)');
+          }
+          micRestartSafetyRef.current = null;
+        }, 12000);
         
         // CHROME FIX: Keep poking it to make sure it starts
         const keepAlive = setInterval(() => {
@@ -961,7 +943,7 @@ const VoiceChat: React.FC<VoiceChatProps> = ({ agentId, agent, onMetricsUpdate }
     } else {
       setTimeout(doSpeak, 300);
     }
-  }, [agentId, agent, settings.speechRate, settings.speechPitch, settings.speechVolume, settings.preferredVoice, settings.voiceGender, audioUnlocked]);
+  }, [agentId, agent, settings.speechRate, settings.speechPitch, settings.speechVolume, settings.preferredVoice, settings.voiceGender, audioUnlocked, restartMicAfterSpeech]);
 
   // Handle user message
   const handleUserMessage = useCallback(async (message: string) => {
