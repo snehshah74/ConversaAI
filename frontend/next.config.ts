@@ -7,10 +7,10 @@ const nextConfig: NextConfig = {
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
   env: {
-    // Use env var if set; on Vercel use deployed backend; else localhost
+    // Use env var if set; in production builds use deployed backend; in dev use localhost
     NEXT_PUBLIC_API_URL:
       process.env.NEXT_PUBLIC_API_URL ||
-      (process.env.VERCEL || process.env.VERCEL_ENV === 'production'
+      (process.env.NODE_ENV === 'production'
         ? 'https://conversa-ai-backend.onrender.com'
         : 'http://localhost:8000'),
   },

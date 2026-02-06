@@ -16,6 +16,7 @@ import {
   Trash2
 } from 'lucide-react';
 import Link from 'next/link';
+import { getApiUrl } from '@/lib/api';
 
 interface Deployment {
   id: string;
@@ -59,7 +60,7 @@ export default function DeploymentPage() {
   
   const loadDeployments = async () => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/agents/${agentId}/deployments`);
       const data = await response.json();
       
@@ -75,7 +76,7 @@ export default function DeploymentPage() {
   
   const createWebDeployment = async () => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/agents/${agentId}/deployments/web`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -113,7 +114,7 @@ export default function DeploymentPage() {
   
   const createPhoneDeployment = async () => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/agents/${agentId}/deployments/phone`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -137,7 +138,7 @@ export default function DeploymentPage() {
   
   const createAPIDeployment = async () => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/agents/${agentId}/deployments/api`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -165,7 +166,7 @@ export default function DeploymentPage() {
   };
   
   const copyEmbedCode = (deploymentId: string) => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const apiUrl = getApiUrl();
     const embedCode = `<script>
   (function() {
     window.ConversaAI = {
@@ -191,7 +192,7 @@ export default function DeploymentPage() {
   
   const toggleDeployment = async (deploymentId: string, currentStatus: string) => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const apiUrl = getApiUrl();
       await fetch(`${apiUrl}/api/deployments/${deploymentId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -209,7 +210,7 @@ export default function DeploymentPage() {
     if (!confirm('Are you sure you want to delete this deployment?')) return;
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const apiUrl = getApiUrl();
       await fetch(`${apiUrl}/api/deployments/${deploymentId}`, {
         method: 'DELETE'
       });

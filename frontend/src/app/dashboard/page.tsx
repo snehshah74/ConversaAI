@@ -55,8 +55,6 @@ export default function DashboardPage() {
   const loadAgents = async () => {
     try {
       setError(null);
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      console.log('🔄 Loading agents from:', apiUrl);
       const data = await getAgents({ userId: user?.id ?? undefined });
       console.log('✅ Agents loaded:', data);
       setAgents(data || []);
@@ -67,7 +65,7 @@ export default function DashboardPage() {
       
       // If it's a connection error, show helpful message
       if (errorMessage.includes('Cannot connect to backend') || errorMessage.includes('fetch') || errorMessage.includes('Load failed')) {
-        setError('Backend server is not running or not accessible. Please ensure the backend is running at http://localhost:8000');
+        setError('Backend server is not running or not accessible. Please check your connection and try again.');
       }
     } finally {
       setLoading(false);

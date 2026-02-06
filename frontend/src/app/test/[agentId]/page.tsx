@@ -17,7 +17,7 @@ import {
   Activity
 } from 'lucide-react';
 import VoiceChat from '@/components/VoiceChat';
-import { getAgent } from '@/lib/api';
+import { getAgent, getApiUrl } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Agent } from '@/lib/types';
 
@@ -246,7 +246,7 @@ export default function AgentTestPage() {
 
       // Try to save to backend if API available
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const apiUrl = getApiUrl();
         await fetch(`${apiUrl}/api/conversations/save`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

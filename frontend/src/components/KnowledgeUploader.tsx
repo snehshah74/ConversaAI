@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { getApiUrl } from '@/lib/api';
 import {
   Upload,
   FileText,
@@ -55,7 +56,7 @@ export default function KnowledgeUploader({
     // Test backend connection
     const testConnection = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const apiUrl = getApiUrl();
         const healthUrl = `${apiUrl}/api/health`;
         const response = await fetch(healthUrl);
         if (!response.ok) {
@@ -63,7 +64,7 @@ export default function KnowledgeUploader({
         }
       } catch (error) {
         console.error('Backend connection test failed:', error);
-        setError(`Cannot connect to backend. Please ensure the backend server is running at ${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}`);
+        setError(`Cannot connect to backend. Please ensure the backend server is running.`);
       }
     };
     
@@ -91,7 +92,7 @@ export default function KnowledgeUploader({
     try {
       setIsLoading(true);
       setError(null);
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const apiUrl = getApiUrl();
       const url = `${apiUrl}/api/agents/${agentId}/knowledge`;
       console.log('🔄 Loading knowledge sources from:', url);
       
@@ -192,7 +193,7 @@ export default function KnowledgeUploader({
       setSuccessMessage(null);
       setUploadProgress({ [file.name]: 0 });
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const apiUrl = getApiUrl();
       const url = `${apiUrl}/api/agents/${agentId}/knowledge/upload`;
       console.log('📡 Upload URL:', url);
       console.log('📋 Agent ID:', agentId);
@@ -319,7 +320,7 @@ export default function KnowledgeUploader({
       formData.append('url', urlInput.trim());
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/agents/${agentId}/knowledge/url`,
+        `${getApiUrl()}/api/agents/${agentId}/knowledge/url`,
         {
           method: 'POST',
           body: formData
@@ -391,7 +392,7 @@ export default function KnowledgeUploader({
       formData.append('question', faqQuestion.trim());
       formData.append('answer', faqAnswer.trim());
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const apiUrl = getApiUrl();
       const url = `${apiUrl}/api/agents/${agentId}/knowledge/faq`;
       console.log('Adding FAQ:', url);
       
@@ -459,7 +460,7 @@ export default function KnowledgeUploader({
       setError(null);
       setSuccessMessage(null);
       
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const apiUrl = getApiUrl();
       const url = `${apiUrl}/api/agents/${agentId}/knowledge/${sourceId}`;
       console.log('🗑️ Deleting knowledge source:', url);
       
@@ -589,7 +590,7 @@ export default function KnowledgeUploader({
               <span className="text-red-300 block">{error}</span>
               {(error.includes('connect') || error.includes('backend')) && (
                 <p className="text-xs text-red-400 mt-2">
-                  Make sure the backend server is running at {process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}
+                  Make sure the backend server is running at {getApiUrl()}
                 </p>
               )}
             </div>

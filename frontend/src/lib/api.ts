@@ -1,4 +1,9 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const PRODUCTION_API = 'https://conversa-ai-backend.onrender.com';
+
+export function getApiUrl(): string {
+  // Always use deployed backend (local dev connects to Render; no need to run backend locally)
+  return process.env.NEXT_PUBLIC_API_URL || PRODUCTION_API;
+}
 
 /** Options for API calls - pass userId for user-scoped data isolation */
 export interface ApiOptions {
@@ -44,7 +49,7 @@ export interface Conversation {
 // Agent API functions
 export async function createAgent(agentData: Partial<Agent>, options?: ApiOptions): Promise<Agent> {
   try {
-    const response = await fetch(`${API_URL}/api/agents`, {
+    const response = await fetch(`${getApiUrl()}/api/agents`, {
       method: 'POST',
       headers: authHeaders(options),
       body: JSON.stringify(agentData),
@@ -58,7 +63,7 @@ export async function createAgent(agentData: Partial<Agent>, options?: ApiOption
     return response.json();
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('fetch')) {
-      throw new Error(`Cannot connect to backend API at ${API_URL}. Make sure the backend server is running.`);
+      throw new Error(`Cannot connect to backend API at ${getApiUrl()}. Make sure the backend server is running.`);
     }
     throw error;
   }
@@ -66,7 +71,7 @@ export async function createAgent(agentData: Partial<Agent>, options?: ApiOption
 
 export async function getAgents(options?: ApiOptions): Promise<Agent[]> {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const apiUrl = getApiUrl();
     console.log('🔄 Fetching agents from:', `${apiUrl}/api/agents`);
     
     const response = await fetch(`${apiUrl}/api/agents`, {
@@ -96,14 +101,14 @@ export async function getAgents(options?: ApiOptions): Promise<Agent[]> {
   } catch (error) {
     console.error('❌ Fetch error:', error);
     if (error instanceof TypeError && (error.message.includes('fetch') || error.message.includes('Load failed'))) {
-      throw new Error(`Cannot connect to backend API. Make sure the backend server is running at ${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}`);
+      throw new Error(`Cannot connect to backend API. Make sure the backend server is running at ${getApiUrl()}`);
     }
     throw error;
   }
 }
 
 export async function getAgent(id: string, options?: ApiOptions): Promise<Agent> {
-  const response = await fetch(`${API_URL}/api/agents/${id}`, {
+  const response = await fetch(`${getApiUrl()}/api/agents/${id}`, {
     headers: authHeaders(options),
   });
   
@@ -115,7 +120,7 @@ export async function getAgent(id: string, options?: ApiOptions): Promise<Agent>
 }
 
 export async function updateAgent(id: string, agentData: Partial<Agent>, options?: ApiOptions): Promise<Agent> {
-  const response = await fetch(`${API_URL}/api/agents/${id}`, {
+  const response = await fetch(`${getApiUrl()}/api/agents/${id}`, {
     method: 'PUT',
     headers: authHeaders(options),
     body: JSON.stringify(agentData),
@@ -129,8 +134,7 @@ export async function updateAgent(id: string, agentData: Partial<Agent>, options
 }
 
 export async function deleteAgent(id: string, options?: ApiOptions): Promise<void> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-  const response = await fetch(`${apiUrl}/api/agents/${id}`, {
+  const response = await fetch(`${getApiUrl()}/api/agents/${id}`, {
     method: 'DELETE',
     headers: authHeaders(options),
   });
@@ -142,7 +146,7 @@ export async function deleteAgent(id: string, options?: ApiOptions): Promise<voi
 }
 
 export async function activateAgent(id: string): Promise<Agent> {
-  const response = await fetch(`${API_URL}/api/agents/${id}/activate`, {
+  const response = await fetch(`${getApiUrl()}/api/agents/${id}/activate`, {
     method: 'PATCH',
   });
   
@@ -154,7 +158,7 @@ export async function activateAgent(id: string): Promise<Agent> {
 }
 
 export async function deactivateAgent(id: string, options?: ApiOptions): Promise<Agent> {
-  const response = await fetch(`${API_URL}/api/agents/${id}/deactivate`, {
+  const response = await fetch(`${getApiUrl()}/api/agents/${id}/deactivate`, {
     method: 'PATCH',
     headers: authHeaders(options),
   });
@@ -168,9 +172,9 @@ export async function deactivateAgent(id: string, options?: ApiOptions): Promise
 
 // Chat API functions
 export async function sendMessage(agentId: string, message: string, conversationId?: string) {
-  console.log('🔄 API sendMessage:', { agentId, message, conversationId, url: `${API_URL}/api/chat` });
+  console.log('🔄 API sendMessage:', { agentId, message, conversationId, url: `${getApiUrl()}/api/chat` });
   
-  const response = await fetch(`${API_URL}/api/chat`, {
+  const response = await fetch(`${getApiUrl()}/api/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -194,7 +198,7 @@ export async function sendMessage(agentId: string, message: string, conversation
 }
 
 export async function startConversation(agentId: string): Promise<Conversation> {
-  const response = await fetch(`${API_URL}/api/conversations/start`, {
+  const response = await fetch(`${getApiUrl()}/api/conversations/start`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -212,7 +216,7 @@ export async function startConversation(agentId: string): Promise<Conversation> 
 }
 
 export async function getConversation(id: string): Promise<Conversation> {
-  const response = await fetch(`${API_URL}/api/conversations/${id}`);
+  const response = await fetch(`${getApiUrl()}/api/conversations/${id}`);
   
   if (!response.ok) {
     throw new Error('Failed to fetch conversation');
@@ -227,9 +231,8 @@ export async function synthesizeSpeechAudio(
   text: string,
   voiceSettings?: Record<string, unknown>
 ): Promise<Blob | null> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
   try {
-    const response = await fetch(`${apiUrl}/api/voice/synthesize-audio`, {
+    const response = await fetch(`${getApiUrl()}/api/voice/synthesize-audio`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -17,7 +17,7 @@ import {
   Rocket,
   Search
 } from 'lucide-react';
-import { getAgents } from '@/lib/api';
+import { getAgents, getApiUrl } from '@/lib/api';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -71,7 +71,7 @@ export default function DeploymentsPage() {
   const loadAllDeployments = async () => {
     try {
       setLoading(true);
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const apiUrl = getApiUrl();
       
       // Load deployments for all agents
       const allDeployments: Deployment[] = [];
@@ -100,7 +100,7 @@ export default function DeploymentsPage() {
     : deployments;
   
   const copyEmbedCode = (deploymentId: string) => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const apiUrl = getApiUrl();
     const embedCode = `<script>
   (function() {
     window.ConversaAI = {

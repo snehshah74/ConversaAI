@@ -19,7 +19,7 @@ import {
   CheckCircle2,
   Loader2
 } from 'lucide-react';
-import { createAgent } from '@/lib/api';
+import { createAgent, getApiUrl } from '@/lib/api';
 import { INDUSTRIES, ROLES, type AgentCreate } from '@/lib/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { getTemplateById, type AgentTemplate } from '@/lib/templates';
@@ -244,7 +244,7 @@ function CreateAgentContent() {
     if (items.length === 0) return;
     
     setIsUploadingPending(true);
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const apiUrl = getApiUrl();
     
     try {
       console.log(`📤 Uploading ${items.length} pending knowledge items to agent ${agentId}`);
