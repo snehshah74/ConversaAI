@@ -27,6 +27,17 @@ In **Settings** → **Environment Variables**, add:
 
 After changing settings, go to **Deployments** → select latest → **Redeploy**.
 
-## 4. Duplicate Projects
+## 4. Social Login (Google, GitHub)
+
+To enable "Sign in with Google" and "Sign in with GitHub":
+
+1. **Supabase Dashboard** → **Authentication** → **Providers**
+2. Enable **Google** and/or **GitHub**
+3. Add credentials (Client ID, Client Secret) from each provider's developer console
+4. **Authentication** → **URL Configuration** → add to **Redirect URLs**:
+   - `https://conversa-voiceai.vercel.app/auth/callback`
+   - `http://localhost:3000/auth/callback` (for local dev)
+
+## 5. Duplicate Projects
 
 You have both **conversa-ai** and **conversa-voiceai**. If one works, you can delete the other to avoid confusion. Ensure both have Root Directory = `frontend` if you keep them.

@@ -25,11 +25,12 @@ export default function LoginPage() {
     setDevMode(process.env.NODE_ENV === 'development' && noSupabase);
   }, []);
 
-  // Show auth callback error from URL
+  // Show auth callback error from URL (include detail for debugging)
   useEffect(() => {
     const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
     if (params.get('error') === 'auth_callback_error') {
-      setError('Social login failed. Please try again or use email.');
+      const detail = params.get('detail');
+      setError(detail ? `Social login failed: ${detail}` : 'Social login failed. Please try again or use email.');
     }
   }, []);
 
