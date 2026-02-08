@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { signIn, signUp, signOut, getCurrentUser } from '@/lib/supabase';
+import { signIn, signUp, signOut, signInWithOAuth, getCurrentUser } from '@/lib/supabase';
 
 interface User {
   id: string;
@@ -15,6 +15,7 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginWithOAuth: (provider: 'google' | 'github') => Promise<void>;
   signup: (userData: { name: string; email: string; company?: string; password: string }) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
@@ -112,6 +113,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loginWithOAuth = async (provider: 'google' | 'github') => {
+    try {
+      const { data, error } = await signInWithOAuth(provider);
+      if (error) throw new Error(error.message);
+      // OAuth redirects away - no need to update state here
+      if (data?.url) {
+        window.location.href = data.url;
+      }
+    } catch (error: any) {
+      console.error('OAuth error:', error);
+      throw error;
     }
   };
 
@@ -226,6 +241,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     isLoading,
     login,
+    loginWithOAuth,
     signup,
     logout,
     isAuthenticated: !!user
@@ -238,6 +254,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user: null, 
         isLoading: true, 
         login: async () => {}, 
+        loginWithOAuth: async () => {}, 
         signup: async () => {}, 
         logout: () => {}, 
         isAuthenticated: false 

@@ -58,6 +58,22 @@ export const signIn = async (email: string, password: string) => {
   );
 }
 
+export const signInWithOAuth = async (provider: 'google' | 'github', redirectTo?: string) => {
+  if (!supabase) {
+    return { 
+      data: null, 
+      error: { message: 'Supabase is not configured. Running in development mode.' } 
+    };
+  }
+  
+  const redirectUrl = redirectTo || (typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : '');
+  
+  return await supabase.auth.signInWithOAuth({
+    provider,
+    options: redirectUrl ? { redirectTo: redirectUrl } : undefined
+  });
+}
+
 export const signOut = async () => {
   if (!supabase) {
     return { error: null };
